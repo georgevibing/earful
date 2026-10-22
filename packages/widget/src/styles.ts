@@ -40,7 +40,8 @@ export const css = `
   max-width: 520px;
 }
 .fh-form { display: grid; gap: 12px; margin: 0; }
-.fh-heading { font-size: 17px; font-weight: 650; margin: 0; padding-right: 28px; }
+.fh-heading { font-size: 17px; font-weight: 650; margin: 0; padding-right: 28px; display: flex; align-items: center; gap: 8px; }
+.fh-mark { width: 22px; height: 22px; flex: none; }
 .fh-field { display: grid; gap: 4px; }
 .fh-label { font-weight: 550; font-size: 13px; }
 .fh-optional { color: var(--fh-muted); font-weight: 400; }

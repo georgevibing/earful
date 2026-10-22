@@ -509,7 +509,10 @@ pub async fn hosted(
     let Some((title, description, key, accepting)) = project else {
         return Ok((
             StatusCode::NOT_FOUND,
-            Html(page("Not found", "<p>No such project.</p>")),
+            Html(page(
+                &Meta::plain("Not found"),
+                "<h1>Not found</h1><p class=\"lead\">No such project.</p>",
+            )),
         )
             .into_response());
     };
@@ -531,23 +534,72 @@ pub async fn hosted(
             "<h1>{t}</h1><p class=\"lead\">This project is not accepting feedback right now. Please check back later.</p>"
         )
     };
-    let mut resp = Html(page(&format!("{title} feedback"), &content)).into_response();
+    let summary = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    let meta = Meta {
+        title: format!("Send feedback: {title} | Feedback Harvest"),
+        og_title: format!("Send feedback: {title}"),
+        description: if summary.is_empty() {
+            format!("Report a bug or share feedback about {title}.")
+        } else {
+            summary.chars().take(200).collect()
+        },
+    };
+    let mut resp = Html(page(&meta, &content)).into_response();
     resp.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     Ok(resp)
 }
 
-fn page(title: &str, content: &str) -> String {
+/// Head metadata for server rendered pages. Values are escaped by [`page`].
+struct Meta {
+    title: String,
+    og_title: String,
+    description: String,
+}
+
+impl Meta {
+    fn plain(title: &str) -> Self {
+        Self {
+            title: format!("{title} | Feedback Harvest"),
+            og_title: title.to_string(),
+            description: "Feedback Harvest".into(),
+        }
+    }
+}
+
+fn page(meta: &Meta, content: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
-         <meta name=\"robots\" content=\"noindex\"><title>{}</title><style>\
-         :root{{color-scheme:light dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}}\
+         <meta name=\"color-scheme\" content=\"light dark\">\
+         <meta name=\"robots\" content=\"noindex, nofollow\">\
+         <title>{title}</title><meta name=\"description\" content=\"{desc}\">\
+         <meta name=\"theme-color\" content=\"#f9f9f7\" media=\"(prefers-color-scheme: light)\">\
+         <meta name=\"theme-color\" content=\"#0d0d0d\" media=\"(prefers-color-scheme: dark)\">\
+         <link rel=\"icon\" href=\"/favicon.ico\" sizes=\"48x48\">\
+         <link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">\
+         <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">\
+         <meta property=\"og:type\" content=\"website\">\
+         <meta property=\"og:site_name\" content=\"Feedback Harvest\">\
+         <meta property=\"og:title\" content=\"{og}\">\
+         <meta property=\"og:description\" content=\"{desc}\">\
+         <meta property=\"og:image\" content=\"/admin/og.png\">\
+         <meta name=\"twitter:card\" content=\"summary_large_image\"><style>\
+         :root{{color-scheme:light dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;\
+         background:#f9f9f7;color:#0b0b0b}}\
+         @media (prefers-color-scheme:dark){{:root{{background:#0d0d0d;color:#f0efec}}}}\
          body{{margin:0;padding:2rem 1rem;line-height:1.5}}\
          main{{max-width:40rem;margin:0 auto}}h1{{margin:0 0 .5rem;font-size:1.6rem}}\
          .desc{{opacity:.8;white-space:pre-line}}.lead{{margin:1rem 0}}\
-         </style></head><body><main>{content}</main></body></html>",
-        html_escape(title)
+         footer{{max-width:40rem;margin:2.5rem auto 0;font-size:.85rem;opacity:.7}}\
+         footer a{{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}}\
+         </style></head><body><main>{content}</main>\
+         <footer><a href=\"https://github.com/georgevibing/feedback-harvest\" rel=\"noopener\">\
+         <img src=\"/favicon.svg\" alt=\"\" width=\"16\" height=\"16\">Powered by Feedback Harvest</a></footer>\
+         </body></html>",
+        title = html_escape(&meta.title),
+        og = html_escape(&meta.og_title),
+        desc = html_escape(&meta.description),
     )
 }
 

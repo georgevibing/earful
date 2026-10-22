@@ -1,0 +1,16 @@
+{
+  "name": "Feedback Harvest",
+  "short_name": "Harvest",
+  "description": "Self-hosted feedback and bug reports for your projects.",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#f9f9f7",
+  "theme_color": "#2a78d6",
+  "icons": [
+    { "src": "/admin/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/admin/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/admin/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/admin/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

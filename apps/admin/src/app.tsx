@@ -10,6 +10,7 @@ import { Projects } from './components/Projects';
 import { Tokens } from './components/Tokens';
 import { useRoute, type Route } from './router';
 import { Toaster, toast } from './toast';
+import { BRAND, documentTitle, MARK_SMALL_URL } from './brand';
 
 type AuthState = 'checking' | 'in' | 'out';
 
@@ -27,6 +28,10 @@ export function App() {
         if (!(e instanceof ApiError) || e.status !== 401) toast('Could not reach the server');
       });
   }, []);
+
+  useEffect(() => {
+    if (auth !== 'checking') document.title = documentTitle(auth === 'out' ? 'login' : route.name);
+  }, [auth, route.name]);
 
   if (auth === 'checking') return <div class="login muted">Loading...</div>;
   if (auth === 'out')
@@ -49,7 +54,8 @@ export function App() {
     <div class="shell">
       <header class="topbar">
         <a class="brand" href="#/">
-          feedback-harvest
+          <img src={MARK_SMALL_URL} alt="" width={24} height={24} />
+          {BRAND}
         </a>
         <nav>
           <NavLink to="#/" active={route.name === 'dashboard'}>

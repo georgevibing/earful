@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { api, ApiError } from '../api';
+import { BRAND, LOGO_URL } from '../brand';
 
 export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [password, setPassword] = useState('');
@@ -31,7 +32,10 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   return (
     <div class="login">
       <form class="card stack" onSubmit={submit}>
-        <h1>feedback-harvest</h1>
+        <div class="login-brand">
+          <img src={LOGO_URL} alt="" width={56} height={56} />
+          <h1>{BRAND}</h1>
+        </div>
         <label class="field">
           Admin password
           <input

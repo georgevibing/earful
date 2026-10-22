@@ -68,6 +68,16 @@ pub async fn admin(Path(path): Path<String>) -> Response {
     admin_index().await
 }
 
+/// Icons browsers request at the site root (also used by the hosted page).
+/// Served from the admin build so there is a single source of truth.
+pub async fn root_icon(uri: axum::http::Uri) -> Response {
+    let name = uri.path().trim_start_matches('/');
+    match AdminAssets::get(name) {
+        Some(f) => file_response(f.data, name, "public, max-age=86400"),
+        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
 pub async fn widget() -> Response {
     match WidgetAssets::get("widget.js") {
         Some(f) => {

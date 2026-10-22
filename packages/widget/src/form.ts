@@ -42,6 +42,29 @@ export interface MountedForm {
 
 type Attrs = Record<string, string | boolean | undefined>;
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** The Feedback Harvest mark (same geometry as the favicon), built without innerHTML. */
+function mark(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 64 64');
+  svg.setAttribute('class', 'fh-mark');
+  svg.setAttribute('aria-hidden', 'true');
+  const shapes: Array<[string, Record<string, string>]> = [
+    ['path', { fill: '#2a78d6', d: 'M16 3h32a13 13 0 0 1 13 13v21a13 13 0 0 1-13 13H29l-14 11V50A13 13 0 0 1 3 37V16A13 13 0 0 1 16 3z' }],
+    ['rect', { fill: '#ffc53d', x: '29.5', y: '17', width: '5', height: '27', rx: '2.5' }],
+    ['ellipse', { fill: '#ffc53d', cx: '32', cy: '14', rx: '5', ry: '8' }],
+    ['ellipse', { fill: '#ffc53d', cx: '24.6', cy: '29', rx: '4.8', ry: '8', transform: 'rotate(-40 24.6 29)' }],
+    ['ellipse', { fill: '#ffc53d', cx: '39.4', cy: '29', rx: '4.8', ry: '8', transform: 'rotate(40 39.4 29)' }],
+  ];
+  for (const [tag, attrs] of shapes) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.append(el);
+  }
+  return svg;
+}
+
 function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs: Attrs = {},
@@ -131,6 +154,7 @@ export function mount(host: HTMLElement, options: MountOptions): MountedForm {
   const ids = { heading: uid('heading'), title: uid('title'), body: uid('body'), counter: uid('counter'), contact: uid('contact'), hp: uid('hp') };
 
   const heading = h('h2', { class: 'fh-heading', id: ids.heading }, [
+    mark(),
     options.project ? `Feedback for ${options.project}` : 'Send feedback',
   ]);
 

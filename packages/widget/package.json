@@ -1,0 +1,38 @@
+{
+  "name": "@feedback-harvest/widget",
+  "version": "0.1.0",
+  "description": "Embeddable feedback widget and tiny client for feedback-harvest",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "./src/widget.ts",
+    "./dist/widget.js"
+  ],
+  "main": "./dist/client.js",
+  "module": "./dist/client.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./widget.js": "./dist/widget.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && vite build --mode widget && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0"
+  },
+  "devDependencies": {
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

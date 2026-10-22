@@ -615,8 +615,12 @@ details.table-view summary {
   border-bottom: 1px solid var(--border);
   margin-bottom: 10px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 .tabs button {
+  flex: 0 0 auto;
+  min-height: 44px;
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 0;

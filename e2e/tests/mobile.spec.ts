@@ -74,6 +74,36 @@ for (const width of [320, 390, 768, 1280]) {
       await fitsViewport(page);
     });
 
+    test('status tabs keep their labels inside their highlights and scroll horizontally', async ({ page }) => {
+      await page.goto('/admin/#/feedback?status=archived');
+      const tabs = page.getByRole('tablist', { name: 'Status' });
+      await expect(tabs.getByRole('tab', { name: 'Archived', exact: true })).toBeInViewport({ ratio: 0.99 });
+      if (width < 700) {
+        expect(await tabs.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      }
+      for (const name of ['Open', 'New', 'Triaged', 'Resolved', 'Archived', 'Spam', 'All']) {
+        const tab = tabs.getByRole('tab', { name, exact: true });
+        await tab.click();
+        await expect(tab).toHaveAttribute('aria-selected', 'true');
+        await expect(tab).toBeInViewport({ ratio: 0.99 });
+        const bounds = await tab.evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const text = range.getBoundingClientRect();
+          const button = el.getBoundingClientRect();
+          return { left: text.left - button.left, right: button.right - text.right, height: button.height };
+        });
+        expect(bounds.left).toBeGreaterThanOrEqual(10);
+        expect(bounds.right).toBeGreaterThanOrEqual(10);
+        expect(bounds.height).toBeGreaterThanOrEqual(44);
+        await fitsViewport(page);
+      }
+      // Back restores the prior selected status and brings its full highlight into view.
+      await page.goBack();
+      await expect(tabs.getByRole('tab', { name: 'Spam', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(tabs.getByRole('tab', { name: 'Spam', exact: true })).toBeInViewport({ ratio: 0.99 });
+    });
+
     for (const [path, ready] of [
       ['/', '.kpis'], ['/projects', '.table-wrap'], ['/projects/1', '.key-box'],
       ['/projects/1/edit', '.form-grid'], ['/feedback?open=1', '.detail'], ['/tokens', '.table-wrap'],

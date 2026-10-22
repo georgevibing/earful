@@ -61,6 +61,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
   const [reload, setReload] = useState(0);
   const [customRange, setCustomRange] = useState(presetOf(filters) === 'custom');
   const searchRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const terms = useMemo(() => searchTerms(filters.q), [filters.q]);
@@ -75,6 +76,18 @@ export function Inbox({ params }: { params: URLSearchParams }) {
   useEffect(() => {
     api.projects().then(setProjects).catch(() => toast('Could not load projects'));
   }, []);
+
+  // Keep the selected status visible on direct links and browser back/forward,
+  // scrolling only the tab strip so the page keeps its vertical position.
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    const active = tabs?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!tabs || !active) return;
+    const strip = tabs.getBoundingClientRect();
+    const button = active.getBoundingClientRect();
+    if (button.left < strip.left) tabs.scrollLeft += button.left - strip.left;
+    else if (button.right > strip.right) tabs.scrollLeft += button.right - strip.right;
+  }, [filters.status]);
 
   // Keep the input in sync when the URL changes from elsewhere (back button, links).
   useEffect(() => setQInput(filters.q), [filters.q]);
@@ -271,7 +284,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
 
       <LabelFilters filters={filters} update={update} revision={reload} />
 
-      <div class="tabs" role="tablist" aria-label="Status">
+      <div class="tabs" role="tablist" aria-label="Status" ref={tabsRef}>
         {TABS.map((t) => (
           <button
             key={t.value}

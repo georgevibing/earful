@@ -108,6 +108,8 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+  min-width: 0;
+  max-width: 100%;
 }
 
 input[type='text'],
@@ -224,6 +226,8 @@ label.check {
 }
 .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 12px;
 }
 
@@ -231,6 +235,7 @@ label.check {
 .shell {
   display: grid;
   grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
 }
 .topbar {
@@ -288,6 +293,8 @@ label.check {
   background: var(--surface-2);
 }
 main.page {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 16px;
   max-width: 1400px;
   width: 100%;
@@ -302,6 +309,7 @@ main.page {
 }
 
 .card {
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -348,6 +356,8 @@ table.data tbody tr:hover {
   background: var(--surface-2);
 }
 .table-wrap {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -722,7 +732,7 @@ details.table-view summary {
 }
 .detail dl {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 4px 12px;
   margin: 0;
   font-size: 12.5px;
@@ -756,6 +766,7 @@ details.table-view summary {
   align-items: center;
 }
 .key-box code {
+  min-width: 0;
   padding: 6px 8px;
   background: var(--surface-2);
   border-radius: var(--radius);
@@ -765,7 +776,7 @@ details.table-view summary {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .form-grid .full {
@@ -792,6 +803,8 @@ details.table-view summary {
   border-radius: var(--radius);
   font-size: 13px;
   z-index: 50;
+  max-width: calc(100% - 32px);
+  overflow-wrap: anywhere;
 }
 
 kbd {
@@ -819,8 +832,62 @@ kbd {
     grid-template-columns: 1fr;
   }
   .topbar {
-    gap: 8px;
-    padding: 0 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 8px;
+    height: auto;
+    padding: 6px 8px 0;
+  }
+  .topbar .brand {
+    min-height: 44px;
+  }
+  .topbar > .spacer {
+    display: none;
+  }
+  .topbar > button {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 44px;
+  }
+  .topbar nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+    padding-bottom: 6px;
+  }
+  .topbar nav a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 6px 2px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .filters > select {
+    flex: 1 1 140px;
+    width: 0;
+  }
+  .list-foot {
+    flex-wrap: wrap;
+  }
+  .list-foot .keyboard-hints {
+    display: none;
+  }
+  .key-box {
+    flex-wrap: wrap;
+  }
+  .key-box code {
+    flex-basis: 100%;
+  }
+  label.field > input,
+  label.field > select,
+  label.field > textarea,
+  .filters input,
+  .filters select {
+    font-size: 16px;
   }
   main.page {
     padding: 10px;

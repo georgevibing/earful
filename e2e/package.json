@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:mobile": "playwright test --config playwright.mobile.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

@@ -328,7 +328,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
                 {total} item{total === 1 ? '' : 's'}
               </label>
               <span class="spacer" />
-              <span class="small">
+              <span class="small keyboard-hints">
                 <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>Enter</kbd> open, <kbd>x</kbd> select, <kbd>e</kbd> archive
               </span>
             </div>

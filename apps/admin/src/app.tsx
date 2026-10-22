@@ -57,7 +57,7 @@ export function App() {
           <img src={MARK_SMALL_URL} alt="" width={24} height={24} />
           {BRAND}
         </a>
-        <nav>
+        <nav aria-label="Main navigation">
           <NavLink to="#/" active={route.name === 'dashboard'}>
             Dashboard
           </NavLink>

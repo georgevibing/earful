@@ -28,7 +28,7 @@ async function mockApi(page: Page) {
     if (path.endsWith('/logout')) return route.fulfill({ status: 204 });
     const data = path.endsWith('/me') ? { ok: true }
       : path.endsWith('/stats') ? stats
-      : path.endsWith('/projects') ? [project]
+      : path.endsWith('/projects') ? [project, { ...project, id: 2, title: 'Below the Glow', slug: 'below-the-glow' }]
       : path.endsWith('/projects/1') ? project
       : path.endsWith('/feedback/1') ? { item: feedback, similar: [] }
       : path.endsWith('/feedback') ? { items: [feedback], total: 1, mode: 'hybrid', semantic: true }
@@ -81,6 +81,20 @@ for (const width of [320, 390, 768, 1280]) {
         await page.goto('/admin/#' + path);
         await expect(page.locator(ready).first()).toBeVisible();
         await fitsViewport(page);
+        if (path === '/' || path === '/projects') {
+          const titles = page.locator('.project-title a');
+          await expect(titles).toHaveCount(2);
+          await expect(titles.last()).toHaveText('Below the Glow');
+          const cells = page.locator('.project-title a, .project-slug');
+          for (const cell of await cells.all()) {
+            // Check rendered text lines, not just the presence of a CSS rule.
+            expect(await cell.evaluate((el) => {
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              return range.getClientRects().length;
+            })).toBe(1);
+          }
+        }
         if (path === '/projects') {
           const table = page.locator('.table-wrap table');
           // A page can fit the viewport while its columns become unreadable.
@@ -89,8 +103,9 @@ for (const width of [320, 390, 768, 1280]) {
             const height = await header.evaluate((el) => el.getBoundingClientRect().height);
             expect(height).toBeLessThan(50);
           }
-          const type = table.getByRole('cell', { name: 'game', exact: true });
-          expect(await type.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(40);
+          for (const type of await table.getByRole('cell', { name: 'game', exact: true }).all()) {
+            expect(await type.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(40);
+          }
           if (width < 700) {
             const scroller = page.locator('.table-wrap');
             expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBeTruthy();

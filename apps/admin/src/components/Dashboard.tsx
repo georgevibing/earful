@@ -169,7 +169,7 @@ export function Dashboard() {
                 <tbody>
                   {shownProjects.map((p) => (
                     <tr key={p.id}>
-                      <td>
+                      <td class="project-title">
                         <a href={feedbackLink({ projectId: p.id })}>{p.title}</a>
                         {!p.accepting && <span class="badge" style={{ marginLeft: '6px' }}>paused</span>}
                       </td>

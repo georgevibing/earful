@@ -768,6 +768,10 @@ details.table-view summary {
 }
 
 /* Projects */
+.project-title,
+.project-slug {
+  white-space: nowrap;
+}
 .key-box {
   display: flex;
   gap: 6px;

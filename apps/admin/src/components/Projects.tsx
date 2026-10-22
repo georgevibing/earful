@@ -51,11 +51,11 @@ export function Projects() {
               <tbody>
                 {projects.map((p) => (
                   <tr key={p.id}>
-                    <td>
+                    <td class="project-title">
                       <a href={`#/projects/${p.id}`}>{p.title}</a>
                     </td>
                     <td>{p.project_type}</td>
-                    <td class="mono">{p.slug}</td>
+                    <td class="mono project-slug">{p.slug}</td>
                     <td>{p.accepting ? <span class="badge">accepting</span> : <span class="badge">paused</span>}</td>
                     <td class="num">{p.stats?.open ?? 0}</td>
                     <td class="num">{p.stats?.total ?? 0}</td>

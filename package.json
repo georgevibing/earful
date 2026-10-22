@@ -1,0 +1,20 @@
+{
+  "name": "feedback-harvest",
+  "private": true,
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:web": "pnpm --filter @feedback-harvest/widget build && pnpm --filter @feedback-harvest/admin build",
+    "build": "pnpm build:web && cargo build --release",
+    "dev:server": "cargo run -p feedback-harvest -- serve",
+    "dev:admin": "pnpm --filter @feedback-harvest/admin dev",
+    "typecheck": "pnpm -r typecheck",
+    "test:web": "pnpm -r --filter=!@feedback-harvest/e2e test",
+    "test:rust": "cargo test --workspace",
+    "test:e2e": "pnpm build:web && cargo build && pnpm --filter @feedback-harvest/e2e test",
+    "lint:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "check": "pnpm typecheck && pnpm lint:rust && pnpm test:rust && pnpm test:web && pnpm test:e2e"
+  }
+}

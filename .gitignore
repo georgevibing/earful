@@ -1,0 +1,14 @@
+/target
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+/data/
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+.DS_Store
+*.log

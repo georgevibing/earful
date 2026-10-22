@@ -19,7 +19,6 @@ use crate::{
     auth::{self, Admin, SESSION_COOKIE},
     crypto,
     db::now,
-    embed::Embedder,
     error::{AppError, AppResult},
     models::{Feedback, KINDS, PROJECT_TYPES, Project, STATUSES, slugify, valid_slug},
     ratelimit::{self, Rule},
@@ -728,13 +727,6 @@ fn parse_mode(q: &HashMap<String, String>) -> AppResult<Mode> {
     }
 }
 
-fn semantic_floor(e: &Embedder) -> f32 {
-    match e {
-        Embedder::Hash { .. } => 0.15,
-        _ => 0.3,
-    }
-}
-
 /// Embeds the query and returns semantic candidates, or `None` when vectors are unavailable.
 pub(crate) async fn semantic_hits(
     state: &AppState,
@@ -748,7 +740,7 @@ pub(crate) async fn semantic_hits(
         Ok(mut v) if !v.is_empty() => {
             let qv = v.swap_remove(0);
             let hits = state.index.search(&qv, project, 200, None);
-            Some(search::cut_semantic(hits, semantic_floor(&state.embedder)))
+            Some(search::cut_semantic(hits, state.embedder.semantic_floor()))
         }
         Ok(_) => None,
         Err(e) => {

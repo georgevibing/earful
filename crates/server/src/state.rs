@@ -26,7 +26,7 @@ impl AppState {
         let mut conn = db::open(&cfg.database_path)?;
         db::migrate(&mut conn)?;
         let secret = db::server_secret(&conn)?;
-        let embedder = Embedder::from_config(&cfg.embed)?;
+        let embedder = Embedder::load(&cfg.embed).await?;
         let index = VectorIndex::default();
         load_index(&conn, &embedder, &index)?;
         Ok(Self {

@@ -1,6 +1,10 @@
 //! Runtime configuration, read once from `FH_*` environment variables.
 
-use std::{net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::{Context, Result};
 
@@ -56,6 +60,88 @@ pub enum EmbedConfig {
         model: String,
         api_key: Option<String>,
     },
+    /// Local Model2Vec static embeddings: real semantic vectors, offline, no GPU.
+    Model2Vec {
+        /// Directory holding `config.json`, `model.safetensors` and `tokenizer.json`.
+        path: PathBuf,
+        /// Hugging Face repo id, only used to download a missing model.
+        repo: String,
+        /// Download the model at startup when `path` is missing.
+        auto_download: bool,
+    },
+}
+
+pub const DEFAULT_MODEL2VEC_REPO: &str = "minishlab/potion-base-8M";
+pub const DEFAULT_MODEL2VEC_PATH: &str = "models/potion-base-8M";
+pub const MODEL2VEC_FILES: &[&str] = &["config.json", "model.safetensors", "tokenizer.json"];
+
+/// True when `dir` contains every file a Model2Vec model needs.
+pub fn model2vec_present(dir: &Path) -> bool {
+    MODEL2VEC_FILES.iter().all(|f| dir.join(f).is_file())
+}
+
+/// Resolves the embedding provider from `FH_EMBED_*` variables. `lookup` is
+/// the environment (injected so tests do not touch the process env).
+pub fn embed_config_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<EmbedConfig> {
+    let get = |key: &str| {
+        lookup(key)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let dim = match get("FH_EMBED_DIM") {
+        Some(v) => v
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid value for FH_EMBED_DIM: {e}"))?,
+        None => 384,
+    };
+    let model2vec = || -> Result<EmbedConfig> {
+        Ok(EmbedConfig::Model2Vec {
+            path: get("FH_EMBED_MODEL_PATH")
+                .unwrap_or_else(|| DEFAULT_MODEL2VEC_PATH.into())
+                .into(),
+            repo: get("FH_EMBED_MODEL").unwrap_or_else(|| DEFAULT_MODEL2VEC_REPO.into()),
+            auto_download: match get("FH_EMBED_AUTO_DOWNLOAD") {
+                Some(v) => v.parse().map_err(|e| {
+                    anyhow::anyhow!("invalid value for FH_EMBED_AUTO_DOWNLOAD: {e}")
+                })?,
+                None => false,
+            },
+        })
+    };
+    Ok(
+        match get("FH_EMBED_PROVIDER").as_deref().unwrap_or("auto") {
+            "none" | "disabled" => EmbedConfig::Disabled,
+            "hash" => EmbedConfig::Hash { dim },
+            "model2vec" => model2vec()?,
+            "auto" => match model2vec()? {
+                EmbedConfig::Model2Vec { path, .. } if !model2vec_present(&path) => {
+                    tracing::info!(
+                        path = %path.display(),
+                        "no Model2Vec model found, using the lexical hash embedder \
+                         (run `feedback-harvest download-model` for semantic search)"
+                    );
+                    EmbedConfig::Hash { dim }
+                }
+                cfg => cfg,
+            },
+            "openai" => EmbedConfig::OpenAi {
+                url: get("FH_EMBED_URL").unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                model: get("FH_EMBED_MODEL").unwrap_or_else(|| "text-embedding-3-small".into()),
+                api_key: match get("FH_EMBED_API_KEY_FILE") {
+                    Some(path) => Some(
+                        std::fs::read_to_string(&path)
+                            .with_context(|| format!("reading FH_EMBED_API_KEY_FILE {path}"))?
+                            .trim()
+                            .to_string(),
+                    ),
+                    None => get("FH_EMBED_API_KEY"),
+                },
+            },
+            other => anyhow::bail!(
+                "unknown FH_EMBED_PROVIDER {other:?} (use auto, model2vec, hash, openai or none)"
+            ),
+        },
+    )
 }
 
 impl Default for Limits {
@@ -123,23 +209,7 @@ impl Config {
         }
         .filter(|s| !s.is_empty());
 
-        let embed = match env("FH_EMBED_PROVIDER").as_deref().unwrap_or("hash") {
-            "none" | "disabled" => EmbedConfig::Disabled,
-            "hash" => EmbedConfig::Hash {
-                dim: parse_or("FH_EMBED_DIM", 384)?,
-            },
-            "openai" => EmbedConfig::OpenAi {
-                url: env("FH_EMBED_URL").unwrap_or_else(|| "https://api.openai.com/v1".into()),
-                model: env("FH_EMBED_MODEL").unwrap_or_else(|| "text-embedding-3-small".into()),
-                api_key: match env("FH_EMBED_API_KEY_FILE") {
-                    Some(path) => Some(std::fs::read_to_string(&path)?.trim().to_string()),
-                    None => env("FH_EMBED_API_KEY"),
-                },
-            },
-            other => {
-                anyhow::bail!("unknown FH_EMBED_PROVIDER {other:?} (use none, hash or openai)")
-            }
-        };
+        let embed = embed_config_from(&|key| std::env::var(key).ok())?;
 
         Ok(Self {
             bind: parse_or("FH_BIND", "127.0.0.1:8080".parse()?)?,
@@ -207,5 +277,117 @@ where
             .parse()
             .map_err(|e| anyhow::anyhow!("invalid value for {key}: {e}")),
         _ => Ok(default),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn resolve(pairs: &[(&str, &str)]) -> Result<EmbedConfig> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        embed_config_from(&|k| map.get(k).cloned())
+    }
+
+    fn fake_model_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for f in MODEL2VEC_FILES {
+            std::fs::write(dir.path().join(f), b"x").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn auto_falls_back_to_hash_without_a_model() {
+        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", "/definitely/not/here")]).unwrap();
+        assert!(matches!(cfg, EmbedConfig::Hash { dim: 384 }));
+        let partial = tempfile::tempdir().unwrap();
+        std::fs::write(partial.path().join("config.json"), b"{}").unwrap();
+        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", partial.path().to_str().unwrap())]).unwrap();
+        assert!(
+            matches!(cfg, EmbedConfig::Hash { .. }),
+            "incomplete model dirs are ignored"
+        );
+    }
+
+    #[test]
+    fn auto_picks_model2vec_when_the_model_exists() {
+        let dir = fake_model_dir();
+        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", dir.path().to_str().unwrap())]).unwrap();
+        match cfg {
+            EmbedConfig::Model2Vec {
+                path,
+                repo,
+                auto_download,
+            } => {
+                assert_eq!(path, dir.path());
+                assert_eq!(repo, DEFAULT_MODEL2VEC_REPO);
+                assert!(!auto_download);
+            }
+            other => panic!("expected model2vec, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn explicit_providers_parse() {
+        assert!(matches!(
+            resolve(&[("FH_EMBED_PROVIDER", "none")]).unwrap(),
+            EmbedConfig::Disabled
+        ));
+        assert!(matches!(
+            resolve(&[("FH_EMBED_PROVIDER", "hash"), ("FH_EMBED_DIM", "128")]).unwrap(),
+            EmbedConfig::Hash { dim: 128 }
+        ));
+        // Explicit model2vec keeps the config even when the model is missing,
+        // so startup can fail loudly instead of silently degrading.
+        match resolve(&[
+            ("FH_EMBED_PROVIDER", "model2vec"),
+            ("FH_EMBED_MODEL_PATH", "/nope"),
+            ("FH_EMBED_MODEL", "minishlab/potion-retrieval-32M"),
+            ("FH_EMBED_AUTO_DOWNLOAD", "true"),
+        ])
+        .unwrap()
+        {
+            EmbedConfig::Model2Vec {
+                path,
+                repo,
+                auto_download,
+            } => {
+                assert_eq!(path, PathBuf::from("/nope"));
+                assert_eq!(repo, "minishlab/potion-retrieval-32M");
+                assert!(auto_download);
+            }
+            other => panic!("expected model2vec, got {other:?}"),
+        }
+        match resolve(&[("FH_EMBED_PROVIDER", "openai"), ("FH_EMBED_API_KEY", "k")]).unwrap() {
+            EmbedConfig::OpenAi {
+                url,
+                model,
+                api_key,
+            } => {
+                assert_eq!(url, "https://api.openai.com/v1");
+                assert_eq!(model, "text-embedding-3-small");
+                assert_eq!(api_key.as_deref(), Some("k"));
+            }
+            other => panic!("expected openai, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_bad_values() {
+        assert!(resolve(&[("FH_EMBED_PROVIDER", "magic")]).is_err());
+        assert!(resolve(&[("FH_EMBED_DIM", "big")]).is_err());
+        assert!(
+            resolve(&[
+                ("FH_EMBED_PROVIDER", "model2vec"),
+                ("FH_EMBED_AUTO_DOWNLOAD", "yes")
+            ])
+            .is_err()
+        );
     }
 }

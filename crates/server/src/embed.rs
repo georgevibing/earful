@@ -1,12 +1,19 @@
 //! Embedding providers and the in-memory vector index used for semantic search.
 
-use std::{collections::HashMap, sync::RwLock, time::Duration};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::config::EmbedConfig;
+use model2vec_rs::model::StaticModel;
+
+use crate::config::{self, EmbedConfig};
 
 pub enum Embedder {
     Disabled,
@@ -19,11 +26,59 @@ pub enum Embedder {
         model: String,
         api_key: Option<String>,
     },
+    /// Local static embeddings (token lookup + mean pooling), no network at runtime.
+    Model2Vec {
+        model: Arc<StaticModel>,
+        name: String,
+    },
 }
 
 impl Embedder {
+    /// Builds the embedder. Loading a Model2Vec model reads ~30 MB from disk,
+    /// so it runs on the blocking pool.
+    pub async fn load(cfg: &EmbedConfig) -> Result<Self> {
+        if let EmbedConfig::Model2Vec {
+            path,
+            repo,
+            auto_download,
+        } = cfg
+        {
+            if !config::model2vec_present(path) {
+                if !auto_download {
+                    bail!(
+                        "Model2Vec model not found in {dir}. Download it with \
+                         `feedback-harvest download-model {repo} {dir}`, set \
+                         FH_EMBED_AUTO_DOWNLOAD=true, or use FH_EMBED_PROVIDER=hash",
+                        dir = path.display()
+                    );
+                }
+                tracing::info!(%repo, path = %path.display(), "downloading Model2Vec model");
+                crate::download::download_model(repo, "main", path).await?;
+            }
+            let dir = path.clone();
+            let started = Instant::now();
+            let model = tokio::task::spawn_blocking(move || load_model2vec(&dir))
+                .await
+                .context("model loading task panicked")??;
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| repo.clone());
+            tracing::info!(model = %name, elapsed_ms = started.elapsed().as_millis() as u64, "loaded Model2Vec model");
+            return Ok(Self::Model2Vec {
+                model: Arc::new(model),
+                name,
+            });
+        }
+        Self::from_config(cfg)
+    }
+
+    /// Builds any embedder that needs no file IO. Use [`Embedder::load`] for Model2Vec.
     pub fn from_config(cfg: &EmbedConfig) -> Result<Self> {
         Ok(match cfg {
+            EmbedConfig::Model2Vec { .. } => {
+                bail!("Model2Vec embedders are built with Embedder::load")
+            }
             EmbedConfig::Disabled => Self::Disabled,
             EmbedConfig::Hash { dim } => Self::Hash {
                 dim: (*dim).max(32),
@@ -53,6 +108,17 @@ impl Embedder {
             Self::Disabled => "disabled".into(),
             Self::Hash { dim } => format!("hash-v1-{dim}"),
             Self::OpenAi { model, .. } => format!("openai:{model}"),
+            Self::Model2Vec { name, .. } => format!("model2vec:{name}"),
+        }
+    }
+
+    /// Cosine similarity below which semantic hits are dropped. Score
+    /// distributions differ a lot between providers.
+    pub fn semantic_floor(&self) -> f32 {
+        match self {
+            Self::Hash { .. } => 0.15,
+            Self::Model2Vec { .. } => MODEL2VEC_FLOOR,
+            _ => 0.3,
         }
     }
 
@@ -61,6 +127,22 @@ impl Embedder {
         match self {
             Self::Disabled => bail!("embeddings are disabled"),
             Self::Hash { dim } => Ok(texts.iter().map(|t| hash_embed(t, *dim)).collect()),
+            Self::Model2Vec { model, .. } => {
+                let model = model.clone();
+                let texts = texts.to_vec();
+                tokio::task::spawn_blocking(move || {
+                    model
+                        .encode_with_args(&texts, Some(512), 64)
+                        .into_iter()
+                        .map(|mut v| {
+                            normalize(&mut v);
+                            v
+                        })
+                        .collect()
+                })
+                .await
+                .context("embedding task panicked")
+            }
             Self::OpenAi {
                 client,
                 url,
@@ -112,6 +194,16 @@ impl Embedder {
             }
         }
     }
+}
+
+/// Floor for potion models, chosen from measured cosine distributions:
+/// on realistic feedback, unrelated pairs score a median 0.11 (p95 0.28) and
+/// true paraphrases a median 0.41, so 0.25 plus the relative cut keeps precision.
+pub const MODEL2VEC_FLOOR: f32 = 0.25;
+
+pub fn load_model2vec(dir: &Path) -> Result<StaticModel> {
+    StaticModel::from_pretrained(dir, None, None, None)
+        .with_context(|| format!("loading Model2Vec model from {}", dir.display()))
 }
 
 fn truncate(s: &str, max: usize) -> &str {

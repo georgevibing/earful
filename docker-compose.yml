@@ -25,8 +25,9 @@ services:
       # Only because this setup serves plain http on localhost. Keep the default
       # (true) whenever the app is reached over HTTPS.
       FH_COOKIE_SECURE: "false"
-      FH_EMBED_PROVIDER: ${FH_EMBED_PROVIDER:-hash}
-      # Real semantic search with a local model (uncomment the ollama service below):
+      # auto uses the Model2Vec model bundled in the image (offline semantic search).
+      FH_EMBED_PROVIDER: ${FH_EMBED_PROVIDER:-auto}
+      # Optional upgrade to a transformer model (uncomment the ollama service below):
       # FH_EMBED_PROVIDER: openai
       # FH_EMBED_URL: http://ollama:11434/v1
       # FH_EMBED_MODEL: nomic-embed-text

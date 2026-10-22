@@ -47,17 +47,40 @@ RUN touch crates/server/src/main.rs crates/server/src/lib.rs \
 # Data dir owned by the distroless nonroot user (uid/gid 65532).
 RUN mkdir -p /out/data && chown 65532:65532 /out/data
 
-# ---------- 3. Runtime ----------
+# ---------- 3. Embedding model (Model2Vec potion-base-8M, MIT, ~31 MB) ----------
+# Pinned revision and sha256 so builds are reproducible and tamper evident.
+# Independent of the source tree, so this layer stays cached across code edits.
+FROM debian:bookworm-slim AS model
+ARG MODEL_REPO=minishlab/potion-base-8M
+ARG MODEL_REVISION=bf8b056651a2c21b8d2565580b8569da283cab23
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /models/potion-base-8M
+RUN for f in config.json model.safetensors tokenizer.json; do \
+        curl -fsSL --retry 3 -o "$f" "https://huggingface.co/${MODEL_REPO}/resolve/${MODEL_REVISION}/$f"; \
+    done \
+    && printf '%s  %s\n' \
+        2a6ac0e9aaa356a68a5688070db78fc3a464fefe85d2f06a1905ce3718687553 config.json \
+        f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2 model.safetensors \
+        e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50 tokenizer.json \
+        | sha256sum -c - \
+    && chmod 0444 ./*
+
+# ---------- 4. Runtime ----------
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=server /feedback-harvest /feedback-harvest
 COPY --from=server --chown=65532:65532 /out/data /data
+# Read only for everyone; the server never writes to the model dir.
+COPY --from=model /models /models
 
 # 0.0.0.0 here is the in-container bind only. Coolify publishes no host port and
 # reaches the app over its private Docker network; docker-compose.yml publishes
 # to 127.0.0.1 only. Never publish this port on a public interface.
 ENV FH_BIND=0.0.0.0:8080 \
     FH_DATABASE_PATH=/data/feedback-harvest.db \
-    FH_TRUSTED_PROXY_HOPS=1
+    FH_TRUSTED_PROXY_HOPS=1 \
+    FH_EMBED_MODEL_PATH=/models/potion-base-8M
 
 VOLUME /data
 # Documentation only: EXPOSE does not publish anything.

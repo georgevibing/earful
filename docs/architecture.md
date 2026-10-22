@@ -11,7 +11,7 @@ feedback-harvest is deliberately boring: one process, one SQLite file, no queue,
 | Keyword index | FTS5 table `feedback_fts`, `porter unicode61` tokenizer | Stemmed word search ranked by BM25. |
 | Fuzzy index | FTS5 table `feedback_tri`, `trigram` tokenizer | Substring and typo tolerant candidate retrieval. |
 | Vector index | `embeddings` table + in-memory `VectorIndex` | Semantic search and "similar items". Brute force cosine. |
-| Embedder | `embed.rs` | `hash` (built in) or any OpenAI compatible `/embeddings` endpoint. |
+| Embedder | `embed.rs`, `download.rs` | `model2vec` (local static embeddings, default in Docker), `hash` (built in, lexical) or any OpenAI compatible `/embeddings` endpoint. `auto` picks Model2Vec when its model directory exists. |
 | Background worker | `worker.rs` | Embedding backfill, near duplicate detection, hourly pruning. |
 | Admin UI | `apps/admin`, embedded with rust-embed | Single page app served at `/admin/`. |
 | Widget | `packages/widget`, embedded with rust-embed | `widget.js` for web pages and the hosted `/s/<slug>` page. |
@@ -69,7 +69,8 @@ Four modes, selectable per query:
 
 - **Keyword**: each query word becomes a prefix term (`"word"*`), OR'ed, against the stemmed FTS5 index. Ranked by BM25 with column weights title 3, body 1, contact 0.5.
 - **Fuzzy**: the query is split into trigrams, which retrieve up to 300 candidates from the trigram index. Each candidate is scored by the mean, over query words, of the best per-word similarity: exact match 1.0, prefix (3+ chars) 0.95, otherwise optimal string alignment distance (adjacent transpositions count as one edit) with a typo budget of 1 edit for 4 to 5 chars, 2 for 6 to 8 and 3 beyond. Whole-phrase matches in the title or body get a bonus. Scores below 0.6 are dropped. Queries made only of 1 to 2 character words fall back to a `LIKE` scan.
-- **Semantic**: the query is embedded with the active provider and compared against the in-memory index by cosine similarity (vectors are L2 normalised, so a dot product). Hits are kept when above an absolute floor and within 70 percent of the best hit, capped at 100.
+- **Semantic**: the query is embedded with the active provider and compared against the in-memory index by cosine similarity (vectors are L2 normalised, so a dot product). Hits are kept when above an absolute floor and within 70 percent of the best hit, capped at 100. The floor depends on the provider because cosine distributions differ: 0.15 for `hash`, 0.25 for Model2Vec (measured on realistic feedback: unrelated pairs median 0.11, p95 0.28; true paraphrases median 0.41), 0.3 for OpenAI compatible models.
+- **Model2Vec** ([potion-base-8M](https://huggingface.co/minishlab/potion-base-8M), MIT): a static embedding model distilled from a sentence transformer. Encoding is tokenization plus a mean of per-token vectors from a 30 MB matrix, so it needs no ONNX runtime or GPU: about 13 µs per item and 20 ms to load in a release build, about 80 MB of extra RSS. Tokenization uses the pure Rust `fancy-regex` backend of `tokenizers`, so no C or C++ build. Input is capped at 2000 characters (`MAX_EMBED_CHARS`).
 - **Hybrid** (default): reciprocal rank fusion of the three lists, `score = sum(1 / (60 + rank))`. RRF ignores raw score scales, which differ wildly between BM25, edit distance and cosine, and rewards items that several retrievers agree on.
 
 Filters (project, kind, status, date range) are applied to the fused candidate set, then results are paginated. Without a query, lists are plain newest-first SQL.
@@ -91,4 +92,5 @@ Known limits, accepted for a personal tool:
 - **Ingest keys are public by design.** They identify a project, they do not authenticate a client. Anything shipped to users (game binaries, web pages) can be extracted, so nothing secret goes into them.
 - **IP based limits** are coarse: users behind CGNAT or one office share a budget, and IPv6 is limited per /64. Behind a proxy, `FH_TRUSTED_PROXY_HOPS` must match the real proxy chain or every user collapses onto the proxy's address (or, if set too high, clients can spoof their IP).
 - **Single admin**, single password, no MFA. Put the admin UI behind an additional gate (VPN, Tailscale, Cloudflare Access) if that matters to you.
-- **Embedding providers** see the feedback text. Use `hash` or a self-hosted Ollama to keep data on your box.
+- **Embedding providers** see the feedback text. `model2vec` and `hash` run in process and never send data anywhere; for `openai`, prefer a self-hosted Ollama to keep data on your box.
+- **Model2Vec quality** is good for short, single language feedback but below transformer models on long or subtle text, and potion-base-8M is English first. Switch to an OpenAI compatible provider if that matters.

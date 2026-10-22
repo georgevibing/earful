@@ -1,6 +1,9 @@
 <div align="center">
 
-# feedback-harvest
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img alt="Feedback Harvest" src="docs/assets/logo-light.svg" width="372">
+</picture>
 
 **Bug reports and feedback from anything you ship, in one tiny self-hosted binary.**
 
@@ -31,7 +34,7 @@
 
 You launched a Steam game, a web app or a CLI and want to hear from the people using it. You do not want accounts, a SaaS subscription or a spam-filled inbox. You want a form your players can use without signing in, an inbox you can actually search, and something you can deploy in a minute and forget about.
 
-feedback-harvest is that: one Rust binary and one SQLite file. Users submit anonymously through a hosted page, an embeddable widget or a plain HTTP API. Layered anti-spam keeps scripts out without CAPTCHAs. A small admin UI (only you can log in) lets you manage projects and dig through submissions with fuzzy, keyword, semantic and hybrid search. Your coding agent gets the same powers through a built-in MCP server.
+Feedback Harvest is that: one Rust binary and one SQLite file. Users submit anonymously through a hosted page, an embeddable widget or a plain HTTP API. Layered anti-spam keeps scripts out without CAPTCHAs. A small admin UI (only you can log in) lets you manage projects and dig through submissions with fuzzy, keyword, semantic and hybrid search. Your coding agent gets the same powers through a built-in MCP server.
 
 It is built for one person running a handful of projects on a Coolify box, not as a SaaS.
 
@@ -56,8 +59,8 @@ It is built for one person running a handful of projects on a Coolify box, not a
 - Scoped (`read` or `write`), hashed, revocable API tokens managed from the admin UI.
 
 **Ship it tiny**
-- One binary of about 8 MB with the admin UI and widget embedded, about 10 MB of RAM when idle, SQLite in WAL mode, no other services (measured on a macOS arm64 release build). A distroless Docker image for Coolify or any container host.
-- Embeddings work offline out of the box, or point at OpenAI, Ollama or any OpenAI compatible server for real semantic search.
+- One binary of about 10 MB with the admin UI and widget embedded, SQLite in WAL mode, no other services. About 10 MB of RAM when idle with the lexical embedder, about 90 MB with the bundled semantic model loaded (measured on a macOS arm64 release build). A distroless Docker image for Coolify or any container host.
+- Real semantic search fully offline: the Docker image ships a 31 MB [Model2Vec](https://github.com/MinishLab/model2vec) model (no GPU, no extra service, about 13 microseconds per embedding). OpenAI, Ollama or any OpenAI compatible server are optional upgrades.
 
 ## Screenshots
 
@@ -207,12 +210,25 @@ Raw IP addresses are never stored, only keyed HMAC pseudonyms (IPv6 at /64 granu
 | `keyword` | FTS5 with Porter stemming, BM25 ranked (title weighted higher) | Error strings, exact terms |
 | `semantic` | Cosine similarity over embeddings, brute force in memory | "game freezes" finding "stuck on the loading screen" |
 
-Embeddings are computed in the background, so submissions never wait on them. Pick a provider:
+Embeddings are computed in the background, so submissions never wait on them. Pick a provider with `FH_EMBED_PROVIDER`:
 
-- **`hash`** (default): offline, deterministic, free. Feature hashing over stemmed words, bigrams and character trigrams, plus a small concept map for common game and app vocabulary (crash, freeze, stuck; lag, stutter, fps). Lexical with a little help, not real understanding.
-- **`openai`** pointed at OpenAI (`text-embedding-3-small`), or at a self-hosted [Ollama](https://ollama.com) with `nomic-embed-text` for real semantic search without third parties. LM Studio, vLLM and llama.cpp server work the same way.
+| Provider | What it is | Cost | Quality |
+| --- | --- | --- | --- |
+| `model2vec` | Local [Model2Vec](https://github.com/MinishLab/model2vec) static embeddings, default model [`minishlab/potion-base-8M`](https://huggingface.co/minishlab/potion-base-8M) (MIT, 31 MB, 256 dimensions). Token lookup plus mean pooling: no transformer, no GPU, no network at runtime. | +2 MB binary, about 80 MB RAM, model loads in about 20 ms, about 13 µs per item | Real semantic matches |
+| `hash` | Feature hashing over stemmed words, bigrams and character trigrams, plus a small concept map for common game and app vocabulary (crash, freeze, stuck; lag, stutter, fps). | Nothing | Lexical with a little help |
+| `openai` | Any OpenAI compatible `/embeddings` API: OpenAI `text-embedding-3-small`, or a self-hosted [Ollama](https://ollama.com) with `nomic-embed-text` (LM Studio, vLLM and llama.cpp server work the same way). | API fees, or a 300 MB+ model server | Best |
+| `none` | Semantic search off; keyword and fuzzy still work. | Nothing | n/a |
 
-Vectors are tagged with their model, so switching providers re-embeds in the background. If the provider is down, submissions still land and keyword and fuzzy search keep working.
+The default is `auto`: Model2Vec when a model exists at `FH_EMBED_MODEL_PATH`, otherwise `hash`. The Docker image bundles potion-base-8M (pinned revision, sha256 checked at build time), so containers get semantic search with zero setup. From source, fetch it once:
+
+```bash
+feedback-harvest download-model            # minishlab/potion-base-8M into models/potion-base-8M
+feedback-harvest download-model minishlab/potion-retrieval-32M models/potion-retrieval-32M   # any Model2Vec repo works
+```
+
+On a test set of 17 realistic paraphrase queries over 18 feedback items (`crates/server/tests/model2vec.rs`), potion-base-8M reaches an MRR of 0.81 against 0.61 for `hash`, and ranks the right item first for 8 of the 12 queries that share no vocabulary with the built-in concept map (hash: 4 of 12). Examples it gets that `hash` cannot: "achievement didn't unlock" finds "the Steam trophy never popped", "can't log into my account" finds "invalid credentials even with the right password", "refund for double payment" finds "billed two times". The larger `potion-retrieval-32M` (129 MB) scored lower (0.73) on this data, so the small model is the default.
+
+Vectors are tagged with their model, so switching providers or models re-embeds everything in the background. If the provider is down, submissions still land and keyword and fuzzy search keep working.
 
 ## Agents via MCP
 
@@ -253,7 +269,7 @@ The image binds `0.0.0.0:8080` inside the container, runs as a non-root user on 
         | POST /api/v1/feedback            | /api/admin/*             |
         v                                  v                          v
  +-------------------------------------------------------------------------+
- |                    feedback-harvest (one Rust binary)                   |
+ |                    Feedback Harvest (one Rust binary)                   |
  |                                                                         |
  |  axum  ->  anti-spam pipeline  ->  SQLite (WAL)                         |
  |                                     |- projects, feedback, tokens       |
@@ -261,8 +277,8 @@ The image binds `0.0.0.0:8080` inside the container, runs as a non-root user on 
  |                                     |- FTS5 trigram (fuzzy)             |
  |  background worker  --embeds-->     '- embeddings -> in-memory index    |
  +--------|----------------------------------------------------------------+
-          v (optional)
-   OpenAI compatible /embeddings (OpenAI, Ollama, LM Studio, ...)
+   embedders: Model2Vec (local, default in Docker) | hash (local)
+              | OpenAI compatible /embeddings (optional: OpenAI, Ollama, ...)
 ```
 
 The server is axum on tokio with rusqlite (bundled SQLite with FTS5), argon2id for the admin password and rust-embed for the web assets. The admin UI is Preact with no other runtime dependencies (about 19 KB of JavaScript gzipped). The deep dive is [docs/architecture.md](docs/architecture.md).
@@ -294,10 +310,12 @@ Everything is configured through environment variables. [.env.example](.env.exam
 | `FH_POW_BITS` | `18` | Base proof of work difficulty (leading zero bits). |
 | `FH_POW_MAX_BITS` | `23` | Upper bound for adaptive difficulty. |
 | `FH_CHALLENGE_TTL_SECS` | `1800` | Challenge lifetime. |
-| `FH_EMBED_PROVIDER` | `hash` | `none`, `hash` or `openai`. |
+| `FH_EMBED_PROVIDER` | `auto` | `auto` (Model2Vec if the model exists, else `hash`), `model2vec`, `hash`, `openai` or `none`. |
+| `FH_EMBED_MODEL_PATH` | `models/potion-base-8M` (Docker: `/models/potion-base-8M`) | Model2Vec model directory (`config.json`, `model.safetensors`, `tokenizer.json`). |
+| `FH_EMBED_AUTO_DOWNLOAD` | `false` | With `model2vec`, download a missing model from Hugging Face at startup. |
 | `FH_EMBED_DIM` | `384` | Vector size for the `hash` provider. |
 | `FH_EMBED_URL` | `https://api.openai.com/v1` | Base URL of an OpenAI compatible API. |
-| `FH_EMBED_MODEL` | `text-embedding-3-small` | Embedding model name. |
+| `FH_EMBED_MODEL` | `text-embedding-3-small` (`openai`), `minishlab/potion-base-8M` (`model2vec`) | Model name for `openai`, or the Hugging Face repo used by `FH_EMBED_AUTO_DOWNLOAD`. |
 | `FH_EMBED_API_KEY` / `FH_EMBED_API_KEY_FILE` | unset | Bearer token for the embedding API. |
 | `RUST_LOG` | `info` | Log filter (tracing `EnvFilter` syntax). |
 
@@ -357,7 +375,7 @@ pnpm dev:server     # API on http://127.0.0.1:8080 (needs FH_ADMIN_PASSWORD_HASH
 pnpm dev:admin      # admin UI with hot reload on http://127.0.0.1:5173/admin/, proxies the API
 ```
 
-`pnpm check` is the gate before every commit. It runs typecheck, rustfmt, clippy with `-D warnings`, the Rust unit and integration tests (100), the widget (29) and admin (29) tests, and the Playwright suite (7) against the real binary. The same steps run in [GitHub Actions](.github/workflows/ci.yml).
+`pnpm check` is the gate before every commit. It runs typecheck, rustfmt, clippy with `-D warnings`, the Rust unit and integration tests (113), the widget (29) and admin (31) tests, and the Playwright suite (7) against the real binary. The same steps run in [GitHub Actions](.github/workflows/ci.yml).
 
 ```sh
 pnpm check          # everything
@@ -375,7 +393,7 @@ Ideas, roughly in order of usefulness:
 
 - Notifications: a webhook, email or Discord message for new bugs, with a daily digest option.
 - Screenshot and log attachments, stored next to the database with size caps.
-- Local ONNX embeddings inside the binary, for real semantic search with zero setup.
+- Optional multilingual Model2Vec default (`potion-multilingual-128M`) for non-English communities.
 - Public "known issues" page per project, generated from triaged bugs.
 - Reply to the reporter from the admin UI when they left an email.
 

@@ -9,6 +9,8 @@ Rust server: axum 0.8, tokio, rusqlite (bundled SQLite with FTS5), argon2, rust-
 - `cargo run -p feedback-harvest -- serve` (reads `FH_*` env, see `src/config.rs`)
 - `printf '%s' pw | cargo run -q -p feedback-harvest -- hash-password`
 - `cargo run -q -p feedback-harvest -- solve <challenge> <bits>`
+- `cargo run -q -p feedback-harvest -- download-model` (Model2Vec into `models/potion-base-8M`, gitignored)
+- `FH_TEST_MODEL2VEC_PATH=$PWD/models/potion-base-8M cargo test --release --test model2vec -- --nocapture` (real-model quality checks, skipped when unset)
 
 ## Gotchas
 

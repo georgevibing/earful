@@ -6,7 +6,13 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use feedback_harvest::{auth, build_router, config::Config, pow, state::AppState, worker};
+use feedback_harvest::{
+    auth, build_router,
+    config::{Config, DEFAULT_MODEL2VEC_PATH, DEFAULT_MODEL2VEC_REPO},
+    download, embed, pow,
+    state::AppState,
+    worker,
+};
 use tracing_subscriber::EnvFilter;
 
 const HELP: &str = "feedback-harvest: tiny self-hosted feedback and bug report collector
@@ -20,6 +26,10 @@ COMMANDS:
                                for FH_ADMIN_PASSWORD_HASH
     healthcheck                Exit 0 if the local server answers /healthz (for Docker)
     solve <challenge> <bits>   Print a proof of work nonce for a challenge (for testing)
+    download-model [repo] [dir] [--revision <rev>]
+                               Fetch a Model2Vec model for offline semantic search
+                               (default minishlab/potion-base-8M into
+                               models/potion-base-8M, revision main)
     mcp-stdio                  Bridge a stdio MCP client to a remote /mcp endpoint
                                (env FH_MCP_URL and FH_MCP_TOKEN or FH_MCP_TOKEN_FILE)
     help, --help, -h           Show this help
@@ -33,6 +43,7 @@ fn main() -> ExitCode {
         Some("hash-password") => hash_password(),
         Some("healthcheck") => healthcheck(),
         Some("solve") => solve(&args[1..]),
+        Some("download-model") => download_model(&args[1..]),
         Some("mcp-stdio") => mcp_stdio(),
         Some("help" | "--help" | "-h") => {
             println!("{HELP}");
@@ -116,6 +127,50 @@ fn mcp_stdio() -> Result<()> {
         .enable_all()
         .build()?
         .block_on(feedback_harvest::mcp::bridge::run())
+}
+
+fn download_model(args: &[String]) -> Result<()> {
+    let mut positional = Vec::new();
+    let mut revision = "main".to_string();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--revision" => {
+                revision = it.next().context("--revision needs a value")?.clone();
+            }
+            other if other.starts_with("--") => bail!("unknown flag {other:?}"),
+            other => positional.push(other.to_string()),
+        }
+    }
+    if positional.len() > 2 {
+        bail!("usage: feedback-harvest download-model [repo] [dir] [--revision <rev>]");
+    }
+    let repo = positional
+        .first()
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_MODEL2VEC_REPO.into());
+    let dir = std::path::PathBuf::from(positional.get(1).cloned().unwrap_or_else(|| {
+        match repo.rsplit_once('/') {
+            Some((_, name)) if repo != DEFAULT_MODEL2VEC_REPO => format!("models/{name}"),
+            _ => DEFAULT_MODEL2VEC_PATH.into(),
+        }
+    }));
+    let files = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(download::download_model(&repo, &revision, &dir))?;
+    for f in &files {
+        println!("{:<18} {:>10} bytes  sha256 {}", f.file, f.bytes, f.sha256);
+    }
+    // Prove the files form a loadable model before declaring success.
+    let model = embed::load_model2vec(&dir)?;
+    let dim = model.encode_single("hello").len();
+    println!(
+        "loaded {repo}@{revision} into {} ({dim} dimensions)",
+        dir.display()
+    );
+    println!("use it with FH_EMBED_MODEL_PATH={}", dir.display());
+    Ok(())
 }
 
 fn hash_password() -> Result<()> {

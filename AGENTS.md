@@ -4,7 +4,7 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 
 ## Repo map
 
-- `crates/server/` Rust server, binary `feedback-harvest` (`serve`, `hash-password`, `healthcheck`, `solve`, `mcp-stdio`)
+- `crates/server/` Rust server, binary `feedback-harvest` (`serve`, `hash-password`, `healthcheck`, `solve`, `download-model`, `mcp-stdio`)
   - `src/routes/` HTTP handlers (`public.rs` ingestion + hosted form, `admin.rs`, `assets.rs`)
   - `src/mcp/` MCP server (`mod.rs` JSON-RPC transport, `tools.rs`, `resources.rs` resources + prompts, `bridge.rs` stdio bridge), `src/tokens.rs` API tokens
   - `src/db.rs` schema + migrations, `src/pow.rs` proof of work, `src/spam.rs` heuristics + client IP, `src/search.rs` keyword/fuzzy/RRF, `src/embed.rs` embedders + vector index, `src/worker.rs` background jobs

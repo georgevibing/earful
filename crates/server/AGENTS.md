@@ -20,3 +20,5 @@ Rust server: axum 0.8, tokio, rusqlite (bundled SQLite with FTS5), argon2, rust-
 - Handlers return `AppResult<T>`. Map validation to `AppError::bad("invalid_<field>", ...)`.
 - Vectors in `VectorIndex` must stay in sync with the `embeddings` table (insert, delete, project delete, reindex).
 - Public submit must not leak outcome: silent drops and quarantines still return `202`.
+- MCP (`src/mcp/`): add a tool by adding a `ToolDef` in `tools.rs` and a match arm in `run` that calls an `op_*` from `routes/admin.rs`. Return validation problems as `Err(String)` starting with the error code (they become `isError` results), and cover it in `tests/mcp.rs`.
+- `FH_MCP_URL=http://127.0.0.1:8080/mcp FH_MCP_TOKEN=fht_... cargo run -q -p feedback-harvest -- mcp-stdio` exercises the stdio bridge.

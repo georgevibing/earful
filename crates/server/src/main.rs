@@ -20,6 +20,8 @@ COMMANDS:
                                for FH_ADMIN_PASSWORD_HASH
     healthcheck                Exit 0 if the local server answers /healthz (for Docker)
     solve <challenge> <bits>   Print a proof of work nonce for a challenge (for testing)
+    mcp-stdio                  Bridge a stdio MCP client to a remote /mcp endpoint
+                               (env FH_MCP_URL and FH_MCP_TOKEN or FH_MCP_TOKEN_FILE)
     help, --help, -h           Show this help
 
 Configuration is read from FH_* environment variables, see README.md.";
@@ -31,6 +33,7 @@ fn main() -> ExitCode {
         Some("hash-password") => hash_password(),
         Some("healthcheck") => healthcheck(),
         Some("solve") => solve(&args[1..]),
+        Some("mcp-stdio") => mcp_stdio(),
         Some("help" | "--help" | "-h") => {
             println!("{HELP}");
             Ok(())
@@ -106,6 +109,13 @@ async fn shutdown_signal() {
         _ = ctrl_c => {}
         _ = term => {}
     }
+}
+
+fn mcp_stdio() -> Result<()> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(feedback_harvest::mcp::bridge::run())
 }
 
 fn hash_password() -> Result<()> {

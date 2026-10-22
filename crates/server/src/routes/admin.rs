@@ -25,6 +25,7 @@ use crate::{
     ratelimit::{self, Rule},
     search::{self, Mode},
     state::AppState,
+    tokens::{self, Scope},
 };
 
 const MAX_PROJECT_TITLE: usize = 120;
@@ -57,6 +58,8 @@ pub fn router() -> Router<AppState> {
         )
         .route("/stats", get(stats))
         .route("/reindex", post(reindex))
+        .route("/tokens", get(list_tokens).post(create_token))
+        .route("/tokens/{id}", axum::routing::delete(delete_token))
 }
 
 fn is_unique_violation(e: &rusqlite::Error) -> bool {
@@ -159,21 +162,21 @@ async fn me(_: Admin) -> Json<Value> {
 // Projects
 
 #[derive(Serialize, Default, Clone)]
-struct ProjectStats {
-    total: i64,
-    open: i64,
-    new: i64,
-    bugs: i64,
-    feedback: i64,
-    spam: i64,
-    last_at: Option<i64>,
+pub(crate) struct ProjectStats {
+    pub(crate) total: i64,
+    pub(crate) open: i64,
+    pub(crate) new: i64,
+    pub(crate) bugs: i64,
+    pub(crate) feedback: i64,
+    pub(crate) spam: i64,
+    pub(crate) last_at: Option<i64>,
 }
 
 #[derive(Serialize)]
-struct ProjectOut {
+pub(crate) struct ProjectOut {
     #[serde(flatten)]
-    project: Project,
-    stats: ProjectStats,
+    pub(crate) project: Project,
+    pub(crate) stats: ProjectStats,
 }
 
 const STATS_SELECT: &str =
@@ -223,6 +226,10 @@ async fn list_projects(
     _: Admin,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<ProjectOut>>> {
+    op_list_projects(&state).await.map(Json)
+}
+
+pub(crate) async fn op_list_projects(state: &AppState) -> AppResult<Vec<ProjectOut>> {
     let out = state
         .db
         .call(|c| {
@@ -250,16 +257,16 @@ async fn list_projects(
                 .collect())
         })
         .await?;
-    Ok(Json(out))
+    Ok(out)
 }
 
 #[derive(Deserialize, Default)]
-struct ProjectInput {
-    title: Option<String>,
-    slug: Option<String>,
-    project_type: Option<String>,
-    description: Option<String>,
-    accepting: Option<bool>,
+pub(crate) struct ProjectInput {
+    pub(crate) title: Option<String>,
+    pub(crate) slug: Option<String>,
+    pub(crate) project_type: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) accepting: Option<bool>,
 }
 
 fn validate_title(t: &str) -> AppResult<String> {
@@ -309,6 +316,14 @@ async fn create_project(
     State(state): State<AppState>,
     JsonBody(input): JsonBody<ProjectInput>,
 ) -> AppResult<(StatusCode, Json<ProjectOut>)> {
+    let out = op_create_project(&state, input).await?;
+    Ok((StatusCode::CREATED, Json(out)))
+}
+
+pub(crate) async fn op_create_project(
+    state: &AppState,
+    input: ProjectInput,
+) -> AppResult<ProjectOut> {
     let title = validate_title(input.title.as_deref().unwrap_or_default())?;
     let slug = match input
         .slug
@@ -346,7 +361,7 @@ async fn create_project(
             }
         })
         .await??;
-    Ok((StatusCode::CREATED, Json(out)))
+    Ok(out)
 }
 
 async fn get_project(
@@ -354,11 +369,14 @@ async fn get_project(
     State(state): State<AppState>,
     IdPath(id): IdPath,
 ) -> AppResult<Json<ProjectOut>> {
+    op_get_project(&state, id).await.map(Json)
+}
+
+pub(crate) async fn op_get_project(state: &AppState, id: i64) -> AppResult<ProjectOut> {
     state
         .db
         .call(move |c| Ok(load_project(c, id)?))
         .await?
-        .map(Json)
         .ok_or(AppError::NotFound)
 }
 
@@ -368,6 +386,14 @@ async fn update_project(
     IdPath(id): IdPath,
     JsonBody(input): JsonBody<ProjectInput>,
 ) -> AppResult<Json<ProjectOut>> {
+    op_update_project(&state, id, input).await.map(Json)
+}
+
+pub(crate) async fn op_update_project(
+    state: &AppState,
+    id: i64,
+    input: ProjectInput,
+) -> AppResult<ProjectOut> {
     let title = input.title.as_deref().map(validate_title).transpose()?;
     let slug = input.slug.as_deref().map(validate_slug).transpose()?;
     let project_type = input
@@ -396,7 +422,7 @@ async fn update_project(
                 Err(e) if is_unique_violation(&e) => Ok(Err(AppError::Conflict("slug is already in use".into()))),
                 Err(e) => Err(e.into()),
                 Ok(0) => Ok(Err(AppError::NotFound)),
-                Ok(_) => Ok(Ok(Json(load_project(c, id)?.expect("exists")))),
+                Ok(_) => Ok(Ok(load_project(c, id)?.expect("exists"))),
             }
         })
         .await?
@@ -407,6 +433,11 @@ async fn delete_project(
     State(state): State<AppState>,
     IdPath(id): IdPath,
 ) -> AppResult<StatusCode> {
+    op_delete_project(&state, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn op_delete_project(state: &AppState, id: i64) -> AppResult<()> {
     let deleted = state
         .db
         .call(move |c| Ok(c.execute("DELETE FROM projects WHERE id = ?1", params![id])?))
@@ -415,7 +446,7 @@ async fn delete_project(
         return Err(AppError::NotFound);
     }
     state.index.remove_project(id);
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }
 
 async fn rotate_key(
@@ -423,6 +454,10 @@ async fn rotate_key(
     State(state): State<AppState>,
     IdPath(id): IdPath,
 ) -> AppResult<Json<ProjectOut>> {
+    op_rotate_key(&state, id).await.map(Json)
+}
+
+pub(crate) async fn op_rotate_key(state: &AppState, id: i64) -> AppResult<ProjectOut> {
     state
         .db
         .call(move |c| {
@@ -436,7 +471,6 @@ async fn rotate_key(
             Ok(load_project(c, id)?)
         })
         .await?
-        .map(Json)
         .ok_or(AppError::NotFound)
 }
 
@@ -453,30 +487,7 @@ async fn export(
             "format must be json or csv",
         ));
     }
-    let (slug, items) = state
-        .db
-        .call(move |c| {
-            let Some(slug) = c
-                .query_row(
-                    "SELECT slug FROM projects WHERE id = ?1",
-                    params![id],
-                    |r| r.get::<_, String>(0),
-                )
-                .optional()?
-            else {
-                return Ok(None);
-            };
-            let mut stmt = c.prepare(&format!(
-                "SELECT {} FROM feedback WHERE project_id = ?1 ORDER BY created_at, id",
-                Feedback::COLUMNS
-            ))?;
-            let items = stmt
-                .query_map(params![id], Feedback::from_row)?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            Ok(Some((slug, items)))
-        })
-        .await?
-        .ok_or(AppError::NotFound)?;
+    let (slug, items) = op_export_items(&state, id).await?;
 
     let (body, content_type) = if format == "csv" {
         (to_csv(&items), "text/csv; charset=utf-8")
@@ -500,6 +511,37 @@ async fn export(
     Ok(resp)
 }
 
+/// The project slug and all its feedback, oldest first.
+pub(crate) async fn op_export_items(
+    state: &AppState,
+    id: i64,
+) -> AppResult<(String, Vec<Feedback>)> {
+    state
+        .db
+        .call(move |c| {
+            let Some(slug) = c
+                .query_row(
+                    "SELECT slug FROM projects WHERE id = ?1",
+                    params![id],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            let mut stmt = c.prepare(&format!(
+                "SELECT {} FROM feedback WHERE project_id = ?1 ORDER BY created_at, id",
+                Feedback::COLUMNS
+            ))?;
+            let items = stmt
+                .query_map(params![id], Feedback::from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(Some((slug, items)))
+        })
+        .await?
+        .ok_or(AppError::NotFound)
+}
+
 const CSV_HEADER: &[&str] = &[
     "id",
     "kind",
@@ -517,7 +559,7 @@ const CSV_HEADER: &[&str] = &[
     "created_at_iso",
 ];
 
-fn to_csv(items: &[Feedback]) -> String {
+pub(crate) fn to_csv(items: &[Feedback]) -> String {
     let mut out = CSV_HEADER.join(",");
     out.push_str("\r\n");
     for f in items {
@@ -686,7 +728,11 @@ fn semantic_floor(e: &Embedder) -> f32 {
 }
 
 /// Embeds the query and returns semantic candidates, or `None` when vectors are unavailable.
-async fn semantic_hits(state: &AppState, q: &str, project: Option<i64>) -> Option<Vec<(i64, f64)>> {
+pub(crate) async fn semantic_hits(
+    state: &AppState,
+    q: &str,
+    project: Option<i64>,
+) -> Option<Vec<(i64, f64)>> {
     if !state.embedder.enabled() {
         return None;
     }
@@ -790,10 +836,18 @@ async fn list_feedback(
     State(state): State<AppState>,
     Query(q): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Value>> {
-    let filters = parse_filters(&q)?;
-    let mode = parse_mode(&q)?;
-    let limit = parse_int(&q, "limit")?.unwrap_or(50).clamp(1, 200);
-    let offset = parse_int(&q, "offset")?.unwrap_or(0).max(0);
+    op_list_feedback(&state, &q).await.map(Json)
+}
+
+/// Lists or searches feedback. `q` uses the same keys as the HTTP query string.
+pub(crate) async fn op_list_feedback(
+    state: &AppState,
+    q: &HashMap<String, String>,
+) -> AppResult<Value> {
+    let filters = parse_filters(q)?;
+    let mode = parse_mode(q)?;
+    let limit = parse_int(q, "limit")?.unwrap_or(50).clamp(1, 200);
+    let offset = parse_int(q, "offset")?.unwrap_or(0).max(0);
     let text = q
         .get("q")
         .map(|s| s.trim().to_string())
@@ -822,12 +876,10 @@ async fn list_feedback(
                 Ok((items, total))
             })
             .await?;
-        return Ok(Json(
-            json!({ "items": items, "total": total, "mode": mode, "semantic": false }),
-        ));
+        return Ok(json!({ "items": items, "total": total, "mode": mode, "semantic": false }));
     };
 
-    let (list, effective, used_vectors) = ranked(&state, &text, mode, filters.project_id).await?;
+    let (list, effective, used_vectors) = ranked(state, &text, mode, filters.project_id).await?;
     let all = state
         .db
         .call(move |c| Ok(fetch_ranked(c, &list, &filters)?))
@@ -838,9 +890,7 @@ async fn list_feedback(
         .skip(offset as usize)
         .take(limit as usize)
         .collect();
-    Ok(Json(
-        json!({ "items": items, "total": total, "mode": effective, "semantic": used_vectors }),
-    ))
+    Ok(json!({ "items": items, "total": total, "mode": effective, "semantic": used_vectors }))
 }
 
 fn load_feedback(c: &Connection, id: i64) -> rusqlite::Result<Option<Feedback>> {
@@ -857,6 +907,11 @@ async fn get_feedback(
     State(state): State<AppState>,
     IdPath(id): IdPath,
 ) -> AppResult<Json<Value>> {
+    op_get_feedback(&state, id).await.map(Json)
+}
+
+/// One feedback item plus its nearest neighbours in the same project.
+pub(crate) async fn op_get_feedback(state: &AppState, id: i64) -> AppResult<Value> {
     let item = state
         .db
         .call(move |c| Ok(load_feedback(c, id)?))
@@ -884,17 +939,42 @@ async fn get_feedback(
         .call(move |c| Ok(fetch_ranked(c, &ranked, &filters)?))
         .await?;
     similar.truncate(SIMILAR);
-    Ok(Json(json!({ "item": item, "similar": similar })))
+    Ok(json!({ "item": item, "similar": similar }))
 }
 
-#[derive(Deserialize)]
-struct FeedbackPatch {
-    status: Option<String>,
-    admin_note: Option<String>,
-    kind: Option<String>,
+/// Feedback similar to `vector` (cosine), excluding `exclude`, honouring the usual filters.
+pub(crate) async fn op_similar_to_vector(
+    state: &AppState,
+    vector: &[f32],
+    project_id: Option<i64>,
+    exclude: Option<i64>,
+    limit: usize,
+) -> AppResult<Vec<Feedback>> {
+    let hits = state.index.search(vector, project_id, limit * 3, exclude);
+    let ranked: Vec<(i64, f64)> = hits.into_iter().map(|(i, s)| (i, s as f64)).collect();
+    let filters = Filters {
+        project_id,
+        kind: None,
+        status: StatusFilter::All,
+        from: None,
+        to: None,
+    };
+    let mut items = state
+        .db
+        .call(move |c| Ok(fetch_ranked(c, &ranked, &filters)?))
+        .await?;
+    items.truncate(limit);
+    Ok(items)
 }
 
-fn validate_status(s: &str) -> AppResult<String> {
+#[derive(Deserialize, Default)]
+pub(crate) struct FeedbackPatch {
+    pub(crate) status: Option<String>,
+    pub(crate) admin_note: Option<String>,
+    pub(crate) kind: Option<String>,
+}
+
+pub(crate) fn validate_status(s: &str) -> AppResult<String> {
     if !STATUSES.contains(&s) {
         return Err(AppError::bad(
             "invalid_status",
@@ -910,6 +990,14 @@ async fn update_feedback(
     IdPath(id): IdPath,
     JsonBody(patch): JsonBody<FeedbackPatch>,
 ) -> AppResult<Json<Feedback>> {
+    op_update_feedback(&state, id, patch).await.map(Json)
+}
+
+pub(crate) async fn op_update_feedback(
+    state: &AppState,
+    id: i64,
+    patch: FeedbackPatch,
+) -> AppResult<Feedback> {
     let status = patch.status.as_deref().map(validate_status).transpose()?;
     let kind = match patch.kind.as_deref() {
         Some(k) if !KINDS.contains(&k) => {
@@ -949,7 +1037,6 @@ async fn update_feedback(
             Ok(load_feedback(c, id)?)
         })
         .await?
-        .map(Json)
         .ok_or(AppError::NotFound)
 }
 
@@ -958,6 +1045,11 @@ async fn delete_feedback(
     State(state): State<AppState>,
     IdPath(id): IdPath,
 ) -> AppResult<StatusCode> {
+    op_delete_feedback(&state, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn op_delete_feedback(state: &AppState, id: i64) -> AppResult<()> {
     let n = state
         .db
         .call(move |c| Ok(c.execute("DELETE FROM feedback WHERE id = ?1", params![id])?))
@@ -966,14 +1058,14 @@ async fn delete_feedback(
         return Err(AppError::NotFound);
     }
     state.index.remove(id);
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }
 
 #[derive(Deserialize)]
-struct BulkBody {
-    ids: Vec<i64>,
-    action: String,
-    status: Option<String>,
+pub(crate) struct BulkBody {
+    pub(crate) ids: Vec<i64>,
+    pub(crate) action: String,
+    pub(crate) status: Option<String>,
 }
 
 async fn bulk(
@@ -981,6 +1073,10 @@ async fn bulk(
     State(state): State<AppState>,
     JsonBody(body): JsonBody<BulkBody>,
 ) -> AppResult<Json<Value>> {
+    op_bulk(&state, body).await.map(Json)
+}
+
+pub(crate) async fn op_bulk(state: &AppState, body: BulkBody) -> AppResult<Value> {
     if body.ids.is_empty() || body.ids.len() > MAX_BULK {
         return Err(AppError::bad(
             "invalid_ids",
@@ -1023,7 +1119,7 @@ async fn bulk(
             state.index.remove(*id);
         }
     }
-    Ok(Json(json!({ "affected": affected })))
+    Ok(json!({ "affected": affected }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1045,6 +1141,10 @@ async fn stats(
     Query(q): Query<HashMap<String, String>>,
 ) -> AppResult<Json<Value>> {
     let project_id = parse_int(&q, "project_id")?;
+    op_stats(&state, project_id).await.map(Json)
+}
+
+pub(crate) async fn op_stats(state: &AppState, project_id: Option<i64>) -> AppResult<Value> {
     let model = state.embedder.model_id();
     let enabled = state.embedder.enabled();
     let out = state
@@ -1119,17 +1219,70 @@ async fn stats(
             }))
         })
         .await?;
-    Ok(Json(out))
+    Ok(out)
 }
 
 async fn reindex(_: Admin, State(state): State<AppState>) -> AppResult<(StatusCode, Json<Value>)> {
+    op_reindex(&state).await?;
+    Ok((StatusCode::ACCEPTED, Json(json!({ "ok": true }))))
+}
+
+/// Drops every vector and wakes the worker to re-embed everything.
+pub(crate) async fn op_reindex(state: &AppState) -> AppResult<()> {
     state
         .db
         .call(|c| Ok(c.execute("DELETE FROM embeddings", [])?))
         .await?;
     state.index.clear();
     state.embed_notify.notify_one();
-    Ok((StatusCode::ACCEPTED, Json(json!({ "ok": true }))))
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// API tokens
+
+async fn list_tokens(
+    _: Admin,
+    State(state): State<AppState>,
+) -> AppResult<Json<Vec<tokens::Token>>> {
+    let list = state.db.call(|c| Ok(tokens::list(c)?)).await?;
+    Ok(Json(list))
+}
+
+#[derive(Deserialize)]
+struct TokenInput {
+    name: Option<String>,
+    scope: Option<String>,
+}
+
+async fn create_token(
+    _: Admin,
+    State(state): State<AppState>,
+    JsonBody(input): JsonBody<TokenInput>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let name = tokens::validate_name(input.name.as_deref().unwrap_or_default())?;
+    let scope = Scope::parse(input.scope.as_deref().unwrap_or_default().trim())
+        .ok_or_else(|| AppError::bad("invalid_scope", "scope must be read or write"))?;
+    let (raw, token) = state
+        .db
+        .call(move |c| Ok(tokens::create(c, &name, scope)?))
+        .await?;
+    let mut out = serde_json::to_value(&token).map_err(anyhow::Error::from)?;
+    out["token"] = json!(raw);
+    Ok((StatusCode::CREATED, Json(out)))
+}
+
+async fn delete_token(
+    _: Admin,
+    State(state): State<AppState>,
+    IdPath(id): IdPath,
+) -> AppResult<StatusCode> {
+    let deleted = state.db.call(move |c| Ok(tokens::delete(c, id)?)).await?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(AppError::NotFound)
+    }
 }
 
 #[cfg(test)]

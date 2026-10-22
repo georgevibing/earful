@@ -343,27 +343,7 @@ pub async fn submit(
             let status = if reasons.is_empty() { "new" } else { "spam" };
             let spam_reason = (!reasons.is_empty()).then(|| reasons.join(", "));
 
-            c.execute(
-                "INSERT INTO feedback (project_id, kind, title, body, contact, rating, meta, source, status,
-                    spam_reason, spam_score, content_hash, ip_hash, created_at, updated_at, last_seen_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14)",
-                params![
-                    pid,
-                    clean.kind,
-                    clean.title,
-                    clean.body,
-                    clean.contact,
-                    clean.rating,
-                    clean.meta,
-                    clean.source,
-                    status,
-                    spam_reason,
-                    score as f64,
-                    hash,
-                    ip,
-                    ts
-                ],
-            )?;
+            insert_feedback(c, pid, &clean, status, spam_reason.as_deref(), score as f64, &hash, &ip, ts)?;
             Ok(Ok(true))
         })
         .await??;
@@ -372,6 +352,125 @@ pub async fn submit(
         state.embed_notify.notify_one();
     }
     Ok(accepted())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_feedback(
+    c: &Connection,
+    pid: i64,
+    clean: &Clean,
+    status: &str,
+    spam_reason: Option<&str>,
+    score: f64,
+    hash: &str,
+    ip_hash: &str,
+    ts: i64,
+) -> rusqlite::Result<i64> {
+    c.execute(
+        "INSERT INTO feedback (project_id, kind, title, body, contact, rating, meta, source, status,
+            spam_reason, spam_score, content_hash, ip_hash, created_at, updated_at, last_seen_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14)",
+        params![
+            pid,
+            clean.kind,
+            clean.title,
+            clean.body,
+            clean.contact,
+            clean.rating,
+            clean.meta,
+            clean.source,
+            status,
+            spam_reason,
+            score,
+            hash,
+            ip_hash,
+            ts
+        ],
+    )?;
+    Ok(c.last_insert_rowid())
+}
+
+/// Feedback created by the admin side (MCP import from Discord, email, ...).
+/// Same validation as public submissions, but no PoW, rate limits or spam scoring.
+#[derive(Default)]
+pub(crate) struct AdminFeedbackInput {
+    pub(crate) kind: Option<String>,
+    pub(crate) title: Option<String>,
+    pub(crate) body: Option<String>,
+    pub(crate) contact: Option<String>,
+    pub(crate) rating: Option<i64>,
+    pub(crate) meta: Option<Value>,
+    pub(crate) status: Option<String>,
+    pub(crate) admin_note: Option<String>,
+    pub(crate) created_at: Option<i64>,
+}
+
+/// Inserts admin-side feedback with `source = "mcp"` and returns its id.
+pub(crate) async fn op_create_feedback(
+    state: &AppState,
+    project_id: i64,
+    input: AdminFeedbackInput,
+) -> AppResult<i64> {
+    let mut clean = validate(&SubmitBody {
+        key: None,
+        kind: input.kind,
+        title: input.title,
+        body: input.body,
+        contact: input.contact,
+        rating: input.rating,
+        meta: input.meta,
+        source: None,
+        challenge: None,
+        nonce: None,
+        website: None,
+    })?;
+    clean.source = "mcp".to_string();
+    let status = match input.status.as_deref() {
+        Some(s) => super::admin::validate_status(s)?,
+        None => "new".to_string(),
+    };
+    let note = input.admin_note.unwrap_or_default();
+    if note.chars().count() > 10_000 {
+        return Err(AppError::bad(
+            "invalid_admin_note",
+            "admin_note must be at most 10000 characters",
+        ));
+    }
+    let ts = now();
+    let created = input.created_at.unwrap_or(ts);
+    if created <= 0 || created > ts + 86400 {
+        return Err(AppError::bad(
+            "invalid_created_at",
+            "created_at must be a past Unix timestamp",
+        ));
+    }
+    let id = state
+        .db
+        .call(move |c| {
+            let exists = c
+                .query_row(
+                    "SELECT 1 FROM projects WHERE id = ?1",
+                    params![project_id],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !exists {
+                return Ok(Err(AppError::NotFound));
+            }
+            let hash = spam::content_hash(&clean.title, &clean.body);
+            let id = insert_feedback(
+                c, project_id, &clean, &status, None, 0.0, &hash, "mcp", created,
+            )?;
+            c.execute(
+                "UPDATE feedback SET admin_note = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, note, ts],
+            )?;
+            Ok(Ok(id))
+        })
+        .await??;
+    state.embed_notify.notify_one();
+    Ok(id)
 }
 
 fn pow_message(e: &pow::PowError) -> &'static str {

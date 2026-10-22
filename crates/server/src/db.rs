@@ -9,7 +9,8 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Migrations are append-only. Each entry runs once, in order, inside a transaction.
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -115,7 +116,20 @@ CREATE TABLE block_events (
     ts         INTEGER NOT NULL
 );
 CREATE INDEX block_events_ts ON block_events (ts);
-"#];
+"#,
+    r#"
+-- Bearer tokens for MCP clients and scripts. Only the SHA-256 of the token is stored.
+CREATE TABLE api_tokens (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT NOT NULL,
+    scope        TEXT NOT NULL CHECK (scope IN ('read', 'write')),
+    token_hash   TEXT NOT NULL UNIQUE,
+    prefix       TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    last_used_at INTEGER
+);
+"#,
+];
 
 pub fn open(path: &Path) -> Result<Connection> {
     let conn =

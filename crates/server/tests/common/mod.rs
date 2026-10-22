@@ -54,6 +54,7 @@ pub struct Req<'a> {
     ip: String,
     headers: Vec<(String, String)>,
     with_cookie: bool,
+    raw: Option<String>,
 }
 
 impl<'a> Req<'a> {
@@ -77,6 +78,13 @@ impl<'a> Req<'a> {
         self
     }
 
+    /// Sends `raw` as the body verbatim (for malformed JSON tests).
+    pub async fn send_raw(mut self, raw: &str) -> Resp {
+        self.body = None;
+        self.raw = Some(raw.to_string());
+        self.send().await
+    }
+
     pub async fn send(self) -> Resp {
         let mut b = Request::builder()
             .method(self.method)
@@ -91,12 +99,13 @@ impl<'a> Req<'a> {
         for (k, v) in &self.headers {
             b = b.header(k, v);
         }
-        let body = match self.body {
-            Some(v) => {
+        let body = match (self.body, self.raw) {
+            (Some(v), _) => {
                 b = b.header(header::CONTENT_TYPE, "application/json");
                 Body::from(v.to_string())
             }
-            None => Body::empty(),
+            (None, Some(raw)) => Body::from(raw),
+            (None, None) => Body::empty(),
         };
         let resp = self
             .app
@@ -151,6 +160,7 @@ impl App {
             ip: "1.1.1.1".into(),
             headers: vec![],
             with_cookie: true,
+            raw: None,
         }
     }
 

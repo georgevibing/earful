@@ -164,8 +164,33 @@ Token object: `{ "id": 1, "name": "claude-code laptop", "scope": "write", "prefi
 
 ## MCP (`/mcp`)
 
-Model Context Protocol server, Streamable HTTP transport (JSON responses, no SSE),
-`Authorization: Bearer fht_...` required (`401` otherwise, `403` for write tools with a
-read token). `GET /mcp` gives `405`. Tools mirror the admin API (projects, feedback,
-search, stats, export, tokens excluded). See `docs/mcp.md` for the tool list and
-client setup.
+Model Context Protocol server, Streamable HTTP transport (JSON responses, no SSE,
+stateless). Full guide and tool reference: [`docs/mcp.md`](mcp.md).
+
+- `POST /mcp` takes one JSON-RPC 2.0 message or a batch. Body limit 1 MB.
+  Requests get `200` with the JSON-RPC response (an array for batches); a body of only
+  notifications gets `202` with no body.
+- `Authorization: Bearer fht_...` is required. Missing, unknown or revoked tokens get
+  `401` with `WWW-Authenticate: Bearer realm="feedback-harvest"`. After 20 failed
+  attempts from one IP in 15 minutes every request from that IP gets `429` until the
+  window passes.
+- A present `Origin` header must match `Host` (DNS rebinding defence), else `403 bad_origin`.
+- `GET /mcp` and `DELETE /mcp` give `405` (no SSE stream, no session teardown needed).
+- `initialize` echoes the client's `protocolVersion` when it is `2025-11-25`,
+  `2025-06-18` or `2025-03-26`, otherwise answers `2025-06-18`, and returns an
+  `Mcp-Session-Id` header. The id is informational; later requests do not need it.
+- Methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
+  `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, and the
+  `notifications/*` family (accepted and ignored).
+- JSON-RPC errors: `-32700` parse error (HTTP 400), `-32600` invalid request,
+  `-32601` unknown method, `-32602` invalid params or unknown tool/prompt,
+  `-32002` unknown resource, `-32603` internal.
+- Scopes: read tokens only see read tools in `tools/list`. Calling a write tool with a
+  read token returns a tool result with `isError: true` whose text starts with
+  `forbidden:`; nothing changes. Tool argument and validation failures are also
+  `isError: true` results (text starts with the admin API error code, e.g.
+  `invalid_body: ...`, `not_found: ...`, `confirmation_required: ...`) so agents can
+  correct themselves.
+- Tools reuse the admin operations, so validation, side effects and the vector index
+  stay identical to the admin API. `create_feedback` is the one MCP-only operation:
+  an admin-side insert with `source = "mcp"` that skips PoW, rate limits and spam scoring.

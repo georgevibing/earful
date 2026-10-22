@@ -6,6 +6,7 @@ pub mod crypto;
 pub mod db;
 pub mod embed;
 pub mod error;
+pub mod mcp;
 pub mod models;
 pub mod pow;
 pub mod ratelimit;
@@ -13,6 +14,7 @@ pub mod routes;
 pub mod search;
 pub mod spam;
 pub mod state;
+pub mod tokens;
 pub mod worker;
 
 pub use routes::build_router;

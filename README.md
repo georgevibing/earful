@@ -14,6 +14,7 @@ A tiny self-hosted service for collecting bug reports and feedback from anything
 | Triage | Statuses `new, triaged, resolved, archived, spam`, admin notes, bulk actions. |
 | Dashboard | Per-project counts, 30 day activity, blocked spam by reason, embedding status. |
 | Export | JSON or CSV per project. |
+| MCP server for agents | Built-in `/mcp` endpoint (Streamable HTTP) with 18 tools, resources and prompts so Claude Code, Cursor, VS Code or any MCP client can manage projects, triage, search and import feedback. Scoped, revocable, hashed API tokens. |
 | Small footprint | Single static-ish binary with the admin UI embedded, SQLite in WAL mode, no other services required. |
 
 ## Architecture
@@ -139,6 +140,22 @@ If the provider is down, submissions still land and keyword/fuzzy search keep wo
    - Embed the widget on a web page, see [packages/widget/README.md](packages/widget/README.md).
    - Call the API from any client: fetch a challenge, solve the proof of work, submit. See [docs/integrations.md](docs/integrations.md) for curl, Unity (C#), Godot (GDScript), C++ and Python examples.
 
+## MCP for agents
+
+The binary also serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, so your coding agent can work with your feedback directly: list and create projects, triage the inbox, search by meaning, find duplicates, import reports from Discord or email, export data and draft release notes.
+
+1. In the admin UI open **API tokens** and create a `read` or `write` token.
+2. Connect, for example with Claude Code:
+
+   ```sh
+   claude mcp add --transport http feedback-harvest https://<your-host>/mcp \
+     --header "Authorization: Bearer fht_..."
+   ```
+
+3. Ask: "triage the new feedback for starfall" or run the `triage_inbox` prompt.
+
+Cursor, VS Code, Claude Desktop (via the built-in `feedback-harvest mcp-stdio` bridge) and generic configs, the full tool reference, resources, prompts and security notes are in [docs/mcp.md](docs/mcp.md).
+
 ## Backups
 
 The whole state is one SQLite database in WAL mode. Do not just copy the `.db` file while the server runs (recent writes may still sit in the `-wal` file). Instead:
@@ -154,6 +171,7 @@ The whole state is one SQLite database in WAL mode. Do not just copy the `.db` f
 - Raw IP addresses are never stored, only keyed HMAC pseudonyms (IPv6 at /64 granularity).
 - Private by default: the server binds `127.0.0.1` unless told otherwise. The Docker image binds `0.0.0.0` inside the container, which is only acceptable because Coolify publishes no host port (its proxy reaches the container over the private Docker network) and the compose file publishes to `127.0.0.1` only. Never publish port 8080 on a public interface; expose the app through the HTTPS proxy.
 - Strict security headers and a `self`-only Content Security Policy on the admin UI.
+- MCP clients authenticate with admin-issued bearer tokens (`read` or `write` scope, stored as SHA-256, revocable). Failed token attempts are rate limited per IP.
 
 ## Testing
 

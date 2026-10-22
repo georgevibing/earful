@@ -1,8 +1,8 @@
 //! HTTP surface: public ingestion, admin API, hosted page and static assets.
 
-mod admin;
+pub(crate) mod admin;
 mod assets;
-mod public;
+pub(crate) mod public;
 
 use std::net::SocketAddr;
 
@@ -44,6 +44,10 @@ pub fn build_router(state: AppState) -> Router {
         .nest(
             "/api/admin",
             admin::router().layer(DefaultBodyLimit::max(1 << 20)),
+        )
+        .route(
+            "/mcp",
+            post(crate::mcp::handle).layer(DefaultBodyLimit::max(1 << 20)),
         )
         .route("/s/{slug}", get(public::hosted))
         .route("/widget.js", get(assets::widget))

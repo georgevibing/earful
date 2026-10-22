@@ -796,6 +796,9 @@ details.table-view summary {
 .form-grid .full {
   grid-column: 1 / -1;
 }
+.snippet > .row {
+  margin-bottom: 8px;
+}
 .snippet + .snippet {
   margin-top: 12px;
 }

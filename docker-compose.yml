@@ -1,0 +1,46 @@
+# Local / single-host self hosting. For Coolify use the Dockerfile build pack
+# instead (see docs/deploy-coolify.md); Coolify must not publish host ports.
+#
+#   cp .env.example .env    # then set FH_ADMIN_PASSWORD_HASH (single quoted!)
+#   docker compose up -d --build
+#   open http://127.0.0.1:8080/admin/
+
+services:
+  feedback-harvest:
+    build: .
+    image: feedback-harvest:local
+    restart: unless-stopped
+    # Loopback only. Reach it from another machine with an SSH tunnel:
+    #   ssh -L 8080:127.0.0.1:8080 your-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - fh-data:/data
+    environment:
+      # Fails fast when unset. The value comes from .env, where it must be
+      # wrapped in single quotes so the `$` signs of the argon2 hash stay literal.
+      FH_ADMIN_PASSWORD_HASH: ${FH_ADMIN_PASSWORD_HASH:?set it in .env}
+      # No reverse proxy in front locally, so do not trust X-Forwarded-For.
+      FH_TRUSTED_PROXY_HOPS: "0"
+      # Only because this setup serves plain http on localhost. Keep the default
+      # (true) whenever the app is reached over HTTPS.
+      FH_COOKIE_SECURE: "false"
+      FH_EMBED_PROVIDER: ${FH_EMBED_PROVIDER:-hash}
+      # Real semantic search with a local model (uncomment the ollama service below):
+      # FH_EMBED_PROVIDER: openai
+      # FH_EMBED_URL: http://ollama:11434/v1
+      # FH_EMBED_MODEL: nomic-embed-text
+      RUST_LOG: ${RUST_LOG:-info}
+
+  # Optional embedding sidecar. Reachable only on the compose network, no published ports.
+  # After the first start pull the model once:
+  #   docker compose exec ollama ollama pull nomic-embed-text
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+
+volumes:
+  fh-data:
+  # ollama-data:

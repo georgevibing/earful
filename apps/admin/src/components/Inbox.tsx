@@ -7,6 +7,7 @@ import { MODES, type BulkAction, type Feedback, type Mode, type Project, type St
 import { formatDate, relativeTime, searchTerms, snippet } from '../util';
 import { FeedbackDetail } from './FeedbackDetail';
 import { Highlight } from './Highlight';
+import { LabelChip, LabelFilters, BulkLabels } from './Labels';
 
 const PAGE = 50;
 
@@ -223,7 +224,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
         <select
           aria-label="Project"
           value={filters.projectId ?? ''}
-          onChange={(e) => update({ projectId: e.currentTarget.value ? Number(e.currentTarget.value) : undefined, open: undefined })}
+          onChange={(e) => update({ projectId: e.currentTarget.value ? Number(e.currentTarget.value) : undefined, labelIds: undefined, labelMatch: undefined, open: undefined })}
         >
           <option value="">All projects</option>
           {projects.map((p) => (
@@ -268,6 +269,8 @@ export function Inbox({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
+      <LabelFilters filters={filters} update={update} revision={reload} />
+
       <div class="tabs" role="tablist" aria-label="Status">
         {TABS.map((t) => (
           <button
@@ -311,6 +314,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
           <button class="small ghost" onClick={() => setSelected(new Set())}>
             Clear
           </button>
+          <BulkLabels items={items} ids={selectedIds} onChanged={() => setReload((n) => n + 1)} />
         </div>
       )}
 
@@ -376,7 +380,7 @@ export function Inbox({ params }: { params: URLSearchParams }) {
             projectName={projectName}
             openHref={openHref}
             onClose={close}
-            onChanged={(item) => setItems((prev) => prev.map((p) => (p.id === item.id ? { ...item, score: p.score } : p)))}
+            onChanged={(item) => { setItems((prev) => prev.map((p) => (p.id === item.id ? { ...item, score: p.score } : p))); setReload((n) => n + 1); }}
             onDeleted={(id) => {
               setItems((prev) => prev.filter((p) => p.id !== id));
               setTotal((t) => Math.max(0, t - 1));
@@ -437,6 +441,7 @@ function Row({ item: f, terms, project, isCursor, isOpen, checked, onToggle, onO
               {'☆'.repeat(5 - f.rating)}
             </span>
           )}
+          {(f.labels ?? []).map((label) => <LabelChip key={label.id} label={label} />)}
           {f.spam_reason && <span class="badge spam">{f.spam_reason}</span>}
           {f.score !== undefined && <span class="mono">{f.score.toFixed(3)}</span>}
         </div>

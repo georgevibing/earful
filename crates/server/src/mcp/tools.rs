@@ -13,6 +13,7 @@ use crate::{
     error::AppError,
     routes::{
         admin::{self, BulkBody, FeedbackPatch, ProjectInput},
+        labels::{self, AssignInput, LabelInput},
         public::{self, AdminFeedbackInput},
     },
     tokens::Scope,
@@ -52,6 +53,9 @@ fn filter_props(default_status: &str) -> Map<String, Value> {
     let props = json!({
         "project": { "type": "string", "description": "Restrict to one project: id or slug. Omit for all projects." },
         "kind": { "type": "string", "enum": ["bug", "feedback"], "description": "Restrict to bug reports or general feedback." },
+        "label_ids": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "maxItems": 20, "description": "Filter by project-scoped label ids from list_labels. Combines with text, status, project and date filters." },
+        "label_match": { "type": "string", "enum": ["all", "any"], "description": "all (default) requires every selected label; any requires at least one." },
+        "unlabeled": { "type": "boolean", "description": "Only feedback without labels. Cannot be combined with label_ids." },
         "status": {
             "type": "string",
             "enum": ["open", "all", "any", "new", "triaged", "resolved", "archived", "spam"],
@@ -118,6 +122,68 @@ fn defs() -> Vec<ToolDef> {
     );
 
     vec![
+        ToolDef {
+            name: "list_labels",
+            title: "List labels and theme counts",
+            description: "List project-scoped labels, descriptions, colors and counts (open_count = new + triaged; feedback_count excludes spam). Sorted by open_count. Read before creating labels to reuse the owner's vocabulary. Counts overlap for multi-label feedback.",
+            input: schema(json!({"project": project_prop()}), &[]),
+            output: Some(object_output()),
+            write: false,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "create_label",
+            title: "Create a project label",
+            description: "Create a reusable theme in one project. Prefer a concise name and a description defining when it applies. Reuse existing labels from list_labels; names are unique per project after lowercasing. On conflict, list labels again rather than retrying with a near-duplicate name.",
+            input: schema(
+                json!({"project": project_prop(), "name": {"type":"string", "minLength":1, "maxLength":64}, "description":{"type":"string", "maxLength":500}, "color":{"type":"string", "enum": labels::COLORS}}),
+                &["project", "name"],
+            ),
+            output: Some(object_output()),
+            write: true,
+            destructive: false,
+            idempotent: false,
+        },
+        ToolDef {
+            name: "update_label",
+            title: "Update a label definition",
+            description: "Rename a label, change its color or refine its description. Keeps the label id and every feedback assignment. Labels cannot move between projects. Use to consolidate terminology without relabeling feedback.",
+            input: schema(
+                json!({"id":{"type":"integer", "minimum":1}, "name":{"type":"string", "minLength":1, "maxLength":64}, "description":{"type":"string", "maxLength":500}, "color":{"type":"string", "enum": labels::COLORS}}),
+                &["id"],
+            ),
+            output: Some(object_output()),
+            write: true,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "delete_label",
+            title: "Delete a label",
+            description: "Delete a label definition and its assignments, preserving all feedback. Requires confirm=true and explicit owner intent. To merge labels, add the destination label to every source item (paginate), verify, and only then delete the source label.",
+            input: schema(
+                json!({"id":{"type":"integer", "minimum":1}, "confirm":{"type":"boolean", "description":"Must be true; removes this label from all feedback."}}),
+                &["id", "confirm"],
+            ),
+            output: Some(object_output()),
+            write: true,
+            destructive: true,
+            idempotent: false,
+        },
+        ToolDef {
+            name: "label_feedback",
+            title: "Assign labels to feedback",
+            description: "Atomically add, remove or set labels on 1..500 feedback ids. Every label must belong to every target item's project. Prefer add/remove to preserve unrelated labels and concurrent classification; both are idempotent. set replaces the complete set, and set [] clears it. Max 20 labels per item. Unknown ids or scope errors cause no changes. affected counts changed items.",
+            input: schema(
+                json!({"ids":{"type":"array", "items":{"type":"integer", "minimum":1}, "minItems":1, "maxItems":500}, "label_ids":{"type":"array", "items":{"type":"integer", "minimum":1}, "maxItems":20}, "action":{"type":"string", "enum":["add","remove","set"]}}),
+                &["ids", "label_ids", "action"],
+            ),
+            output: Some(object_output()),
+            write: true,
+            destructive: false,
+            idempotent: true,
+        },
         ToolDef {
             name: "list_projects",
             title: "List projects",
@@ -471,6 +537,24 @@ impl Args<'_> {
             .ok_or_else(|| format!("invalid_arguments: {k} is required"))
     }
 
+    fn ints(&self, k: &str) -> Result<Option<Vec<i64>>, String> {
+        match self.0.get(k) {
+            None => Ok(None),
+            Some(Value::Array(v)) => v
+                .iter()
+                .map(|x| {
+                    x.as_i64().ok_or_else(|| {
+                        format!("invalid_arguments: {k} must be an array of integers")
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            _ => Err(format!(
+                "invalid_arguments: {k} must be an array of integers"
+            )),
+        }
+    }
+
     fn bool(&self, k: &str) -> Result<Option<bool>, String> {
         match self.0.get(k) {
             None | Some(Value::Null) => Ok(None),
@@ -547,6 +631,18 @@ async fn feedback_query(
     default_status: &str,
 ) -> Result<HashMap<String, String>, String> {
     let mut q = HashMap::new();
+    if let Some(ids) = a.ints("label_ids")? {
+        q.insert(
+            "label_ids".into(),
+            ids.iter().map(i64::to_string).collect::<Vec<_>>().join(","),
+        );
+    }
+    if let Some(v) = a.str("label_match")? {
+        q.insert("label_match".into(), v);
+    }
+    if let Some(v) = a.bool("unlabeled")? {
+        q.insert("unlabeled".into(), v.to_string());
+    }
     if let Some(p) = opt_project(ctx, a).await? {
         q.insert("project_id".into(), p.to_string());
     }
@@ -622,6 +718,14 @@ fn feedback_line(f: &Value, slugs: &HashMap<i64, String>) -> String {
     }
     if let Some(s) = f["score"].as_f64() {
         line.push_str(&format!(", score {s:.3}"));
+    }
+    if let Some(labels) = f["labels"].as_array().filter(|v| !v.is_empty()) {
+        let names = labels
+            .iter()
+            .filter_map(|l| l["name"].as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        line.push_str(&format!(", labels: {names}"));
     }
     line.push(')');
     if let Some(reason) = f["spam_reason"].as_str() {
@@ -756,6 +860,78 @@ pub async fn call(ctx: &Ctx, params: &Value) -> Result<Value, RpcError> {
 async fn run(ctx: &Ctx, name: &str, a: &Args<'_>) -> ToolResult {
     let state = &ctx.state;
     match name {
+        "list_labels" => {
+            let project = opt_project(ctx, a).await?;
+            let labels = to_value(
+                labels::op_list_labels(state, project)
+                    .await
+                    .map_err(app_err)?,
+            )?;
+            Ok((json!({"labels": labels}), pretty(&labels)))
+        }
+        "create_label" => {
+            let project = project_id(ctx, &a.req_str("project")?).await?;
+            let v = to_value(
+                labels::op_create_label(
+                    state,
+                    LabelInput {
+                        project_id: Some(project),
+                        name: Some(a.req_str("name")?),
+                        color: a.str("color")?,
+                        description: a.str("description")?,
+                    },
+                )
+                .await
+                .map_err(app_err)?,
+            )?;
+            Ok((v.clone(), pretty(&v)))
+        }
+        "update_label" => {
+            let v = to_value(
+                labels::op_update_label(
+                    state,
+                    a.req_int("id")?,
+                    LabelInput {
+                        project_id: None,
+                        name: a.str("name")?,
+                        color: a.str("color")?,
+                        description: a.str("description")?,
+                    },
+                )
+                .await
+                .map_err(app_err)?,
+            )?;
+            Ok((v.clone(), pretty(&v)))
+        }
+        "delete_label" => {
+            if a.bool("confirm")? != Some(true) {
+                return Err("confirmation_required: pass confirm=true to delete the label and its assignments; feedback is preserved".into());
+            }
+            let id = a.req_int("id")?;
+            labels::op_delete_label(state, id).await.map_err(app_err)?;
+            Ok((
+                json!({"deleted":true,"id":id}),
+                format!("Deleted label #{id}; feedback preserved."),
+            ))
+        }
+        "label_feedback" => {
+            let v = labels::op_assign_labels(
+                state,
+                AssignInput {
+                    ids: a.ints("ids")?.ok_or("invalid_arguments: ids is required")?,
+                    label_ids: a
+                        .ints("label_ids")?
+                        .ok_or("invalid_arguments: label_ids is required")?,
+                    action: a.req_str("action")?,
+                },
+            )
+            .await
+            .map_err(app_err)?;
+            Ok((
+                v.clone(),
+                format!("Updated labels on {} item(s).", v["affected"]),
+            ))
+        }
         "list_projects" => {
             let projects = to_value(admin::op_list_projects(state).await.map_err(app_err)?)?;
             let list = projects.as_array().cloned().unwrap_or_default();

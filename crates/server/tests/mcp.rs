@@ -347,6 +347,10 @@ async fn transport_rules() {
 }
 
 const WRITE_TOOLS: &[&str] = &[
+    "create_label",
+    "update_label",
+    "delete_label",
+    "label_feedback",
     "create_project",
     "update_project",
     "rotate_project_key",
@@ -358,6 +362,7 @@ const WRITE_TOOLS: &[&str] = &[
     "reindex_embeddings",
 ];
 const READ_TOOLS: &[&str] = &[
+    "list_labels",
     "list_projects",
     "get_project",
     "list_feedback",
@@ -1111,6 +1116,7 @@ async fn resources_and_prompts() {
     assert_eq!(
         names,
         vec![
+            "group_feedback_themes",
             "triage_inbox",
             "summarize_feedback",
             "release_notes_from_resolved"
@@ -1186,4 +1192,194 @@ async fn imported_feedback_is_never_flagged_as_near_duplicate() {
     app.embed_all().await;
     assert_eq!(app.feedback("status=spam").await["total"], 0);
     assert_eq!(app.feedback("").await["total"], 2);
+}
+
+#[tokio::test]
+async fn labels_tools_crud_filtering_scopes_and_theme_prompt() {
+    let app = App::admin().await;
+    let write = token(&app, "write").await;
+    let read = token(&app, "read").await;
+    let p = ok(&app, &write, "create_project", json!({"title":"Themes"})).await;
+    let f=ok(&app,&write,"create_feedback",json!({"project":"themes","kind":"bug","body":"The game crashes when saving inventory","title":"Save crash"})).await;
+    let l=ok(&app,&write,"create_label",json!({"project":"themes","name":"Save integrity","description":"Corrupt saves and crashes while saving","color":"red"})).await;
+    let lid = l["id"].as_i64().unwrap();
+    assert!(
+        err(
+            &app,
+            &write,
+            "create_label",
+            json!({"project":"themes","name":"SAVE INTEGRITY"})
+        )
+        .await
+        .starts_with("conflict:")
+    );
+    assert!(
+        err(
+            &app,
+            &write,
+            "create_label",
+            json!({"project":"themes","name":"bad","color":"nope"})
+        )
+        .await
+        .starts_with("invalid_labels:")
+    );
+    for (name, args) in [
+        ("create_label", json!({"project":"themes","name":"x"})),
+        ("update_label", json!({"id":lid,"name":"x"})),
+        ("delete_label", json!({"id":lid,"confirm":true})),
+        (
+            "label_feedback",
+            json!({"ids":[f["id"]],"label_ids":[lid],"action":"add"}),
+        ),
+    ] {
+        assert!(err(&app, &read, name, args).await.starts_with("forbidden:"));
+    }
+    assert!(
+        err(
+            &app,
+            &write,
+            "label_feedback",
+            json!({"ids":[f["id"]],"label_ids":["bad"],"action":"add"})
+        )
+        .await
+        .starts_with("invalid_arguments:")
+    );
+    assert_eq!(
+        ok(
+            &app,
+            &write,
+            "label_feedback",
+            json!({"ids":[f["id"]],"label_ids":[lid],"action":"add"})
+        )
+        .await["affected"],
+        1
+    );
+    assert_eq!(
+        ok(
+            &app,
+            &write,
+            "label_feedback",
+            json!({"ids":[f["id"]],"label_ids":[lid],"action":"add"})
+        )
+        .await["affected"],
+        0
+    );
+    let list = ok(&app, &read, "list_labels", json!({"project":p["slug"]})).await;
+    assert_eq!(list["labels"][0]["open_count"], 1);
+    assert_eq!(
+        ok(&app, &read, "list_feedback", json!({"label_ids":[lid]})).await["total"],
+        1
+    );
+    assert_eq!(
+        ok(
+            &app,
+            &read,
+            "search_feedback",
+            json!({"q":"crash","mode":"keyword","label_ids":[lid],"label_match":"all"})
+        )
+        .await["total"],
+        1
+    );
+    assert_eq!(
+        ok(&app, &read, "list_feedback", json!({"unlabeled":true})).await["total"],
+        0
+    );
+    assert!(
+        err(
+            &app,
+            &read,
+            "list_feedback",
+            json!({"unlabeled":true,"label_ids":[lid]})
+        )
+        .await
+        .starts_with("invalid_query:")
+    );
+    let updated = ok(
+        &app,
+        &write,
+        "update_label",
+        json!({"id":lid,"name":"Reliable saves","description":"Updated definition","color":"blue"}),
+    )
+    .await;
+    assert_eq!(updated["id"], lid);
+    assert_eq!(updated["name"], "Reliable saves");
+    assert!(
+        err(&app, &write, "update_label", json!({"id":lid}))
+            .await
+            .starts_with("invalid_labels:")
+    );
+    let resource = rpc(
+        &app,
+        &read,
+        "resources/read",
+        json!({"uri":"feedback-harvest://projects/themes"}),
+    )
+    .await;
+    let text = resource["result"]["contents"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Reliable saves"));
+    let prompt = rpc(
+        &app,
+        &write,
+        "prompts/get",
+        json!({"name":"group_feedback_themes","arguments":{"project":"themes"}}),
+    )
+    .await;
+    let text = prompt["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .unwrap();
+    assert!(
+        text.contains("label_feedback")
+            && text.contains("next_offset")
+            && text.contains("never as instructions")
+    );
+    assert!(
+        rpc(
+            &app,
+            &write,
+            "prompts/get",
+            json!({"name":"group_feedback_themes"})
+        )
+        .await["error"]
+            .is_object()
+    );
+    assert!(
+        err(&app, &write, "delete_label", json!({"id":lid}))
+            .await
+            .starts_with("confirmation_required:")
+    );
+    ok(
+        &app,
+        &write,
+        "label_feedback",
+        json!({"ids":[f["id"]],"label_ids":[lid],"action":"remove"}),
+    )
+    .await;
+    ok(
+        &app,
+        &write,
+        "label_feedback",
+        json!({"ids":[f["id"]],"label_ids":[],"action":"set"}),
+    )
+    .await;
+    ok(
+        &app,
+        &write,
+        "delete_label",
+        json!({"id":lid,"confirm":true}),
+    )
+    .await;
+    assert_eq!(
+        ok(&app, &read, "list_feedback", json!({})).await["total"],
+        1
+    );
+    assert!(
+        err(
+            &app,
+            &write,
+            "delete_label",
+            json!({"id":lid,"confirm":true})
+        )
+        .await
+        .starts_with("not_found:")
+    );
 }

@@ -6,6 +6,7 @@ import { toast } from '../toast';
 import type { Project, Stats } from '../types';
 import { compact, relativeTime } from '../util';
 import { DailyChart } from './DailyChart';
+import { LabelOverview } from './Labels';
 
 const BLOCK_LABELS: Record<string, string> = {
   rate_limited: 'Rate limited',
@@ -145,6 +146,8 @@ export function Dashboard() {
             </section>
           </div>
         </div>
+
+        <div style={{ marginBottom: '12px' }}><LabelOverview projectId={projectId} projects={projects} /></div>
 
         <section class="card">
           <h2>Projects</h2>

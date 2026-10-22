@@ -2,6 +2,7 @@
 
 pub(crate) mod admin;
 mod assets;
+pub(crate) mod labels;
 pub(crate) mod public;
 
 use std::net::SocketAddr;

@@ -61,6 +61,7 @@ pub struct Feedback {
     /// Relevance score when the row came from a search, otherwise absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
+    pub labels: Vec<Label>,
 }
 
 impl Feedback {
@@ -88,6 +89,35 @@ impl Feedback {
             updated_at: r.get(15)?,
             last_seen_at: r.get(16)?,
             score: None,
+            labels: Vec::new(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Label {
+    pub id: i64,
+    pub project_id: i64,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl Label {
+    pub const COLUMNS: &'static str =
+        "l.id, l.project_id, l.name, l.color, l.description, l.created_at, l.updated_at";
+
+    pub fn from_row(r: &Row, offset: usize) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: r.get(offset)?,
+            project_id: r.get(offset + 1)?,
+            name: r.get(offset + 2)?,
+            color: r.get(offset + 3)?,
+            description: r.get(offset + 4)?,
+            created_at: r.get(offset + 5)?,
+            updated_at: r.get(offset + 6)?,
         })
     }
 }

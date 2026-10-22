@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable%20%C2%B7%202024%20edition-orange.svg?logo=rust)](https://www.rust-lang.org)
 [![Single binary](https://img.shields.io/badge/deploy-single%20binary%20%2B%20SQLite-success.svg)](#quickstart)
-[![MCP](https://img.shields.io/badge/MCP-18%20tools-8A2BE2.svg)](docs/mcp.md)
+[![MCP](https://img.shields.io/badge/MCP-23%20tools-8A2BE2.svg)](docs/mcp.md)
 
 [Quickstart](#quickstart) ·
 [Integrate](#integrate-a-product) ·
@@ -38,6 +38,10 @@ Feedback Harvest is that: one Rust binary and one SQLite file. Users submit anon
 
 It is built for one person running a handful of projects on a Coolify box, not as a SaaS.
 
+Project-scoped **labels and themes** support multi-label triage, all/any/unlabeled
+filters, bulk assignment and a dashboard theme overview. Agents use the same operations
+through MCP; see the [theme classification guide](docs/agent-themes.md).
+
 ## Features
 
 **Collect**
@@ -55,7 +59,7 @@ It is built for one person running a handful of projects on a Coolify box, not a
 - A dashboard with 30 day activity, blocked spam by reason and per-project counts.
 
 **Agents via MCP**
-- A built-in [Model Context Protocol](https://modelcontextprotocol.io) endpoint with 18 tools, resources and prompts. Claude Code, Cursor, VS Code or any MCP client can triage the inbox, search by meaning, import reports from Discord and draft release notes.
+- A built-in [Model Context Protocol](https://modelcontextprotocol.io) endpoint with 23 tools, resources and prompts. Claude Code, Cursor, VS Code or any MCP client can triage the inbox, search by meaning, import reports from Discord and draft release notes.
 - Scoped (`read` or `write`), hashed, revocable API tokens managed from the admin UI.
 
 **Ship it tiny**
@@ -243,10 +247,10 @@ Ask "triage the new feedback for starfall", or run the `triage_inbox` prompt.
 
 | | |
 | --- | --- |
-| Read tools (9) | `list_projects`, `get_project`, `list_feedback`, `search_feedback`, `get_feedback`, `find_similar_feedback`, `get_stats`, `export_feedback`, `get_integration_snippets` |
-| Write tools (9) | `create_project`, `update_project`, `rotate_project_key`, `delete_project`, `create_feedback`, `update_feedback`, `bulk_update_feedback`, `delete_feedback`, `reindex_embeddings` |
+| Read tools (10) | `list_labels`, `list_projects`, `get_project`, `list_feedback`, `search_feedback`, `get_feedback`, `find_similar_feedback`, `get_stats`, `export_feedback`, `get_integration_snippets` |
+| Write tools (13) | `create_label`, `update_label`, `delete_label`, `label_feedback`, `create_project`, `update_project`, `rotate_project_key`, `delete_project`, `create_feedback`, `update_feedback`, `bulk_update_feedback`, `delete_feedback`, `reindex_embeddings` |
 | Resources | `feedback-harvest://projects`, `.../projects/{slug}`, `.../feedback/{id}` |
-| Prompts | `triage_inbox`, `summarize_feedback`, `release_notes_from_resolved` |
+| Prompts | `group_feedback_themes`, `triage_inbox`, `summarize_feedback`, `release_notes_from_resolved` |
 
 Read tokens never see write tools. Destructive tools require explicit confirmation arguments. Clients that only speak stdio (Claude Desktop, for example) can use the built-in `feedback-harvest mcp-stdio` bridge. Setup for every client, the full tool reference and example workflows are in [docs/mcp.md](docs/mcp.md).
 
@@ -272,7 +276,7 @@ The image binds `0.0.0.0:8080` inside the container, runs as a non-root user on 
  |                    Feedback Harvest (one Rust binary)                   |
  |                                                                         |
  |  axum  ->  anti-spam pipeline  ->  SQLite (WAL)                         |
- |                                     |- projects, feedback, tokens       |
+ |                                     |- projects, feedback, labels, tokens |
  |  embedded admin UI + widget.js      |- FTS5 porter (keyword)            |
  |                                     |- FTS5 trigram (fuzzy)             |
  |  background worker  --embeds-->     '- embeddings -> in-memory index    |
@@ -281,7 +285,7 @@ The image binds `0.0.0.0:8080` inside the container, runs as a non-root user on 
               | OpenAI compatible /embeddings (optional: OpenAI, Ollama, ...)
 ```
 
-The server is axum on tokio with rusqlite (bundled SQLite with FTS5), argon2id for the admin password and rust-embed for the web assets. The admin UI is Preact with no other runtime dependencies (about 19 KB of JavaScript gzipped). The deep dive is [docs/architecture.md](docs/architecture.md).
+The server is axum on tokio with rusqlite (bundled SQLite with FTS5), argon2id for the admin password and rust-embed for the web assets. The admin UI is Preact with no other runtime dependencies (about 21 KB of JavaScript gzipped). The deep dive is [docs/architecture.md](docs/architecture.md).
 
 <details>
 <summary><b>Configuration</b> (all environment variables)</summary>

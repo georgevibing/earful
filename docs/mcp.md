@@ -3,11 +3,11 @@
 feedback-harvest ships a [Model Context Protocol](https://modelcontextprotocol.io) server
 inside the same binary, at `POST /mcp`. Point Claude Code, Claude Desktop, Cursor, VS Code
 or any MCP client at it and your agent can manage projects, triage the inbox, search
-feedback by meaning, import reports from other channels and draft release notes.
+feedback by meaning, group reports into reusable themes, import reports from other channels and draft release notes.
 
 - Transport: Streamable HTTP with plain JSON responses (no SSE), stateless.
 - Auth: admin-issued bearer tokens, `read` or `write` scoped, revocable, stored hashed.
-- 18 tools, 3 resources, 3 prompts. Tools call the exact same code as the admin API.
+- 23 tools, 3 resources, 4 prompts. Tools call the exact same code as the admin API.
 
 ## Quickstart
 
@@ -135,6 +135,7 @@ Ask your agent things like:
 - "Did anyone already report the inventory crash? If not, file this Discord message as a bug."
 - "Write release notes from everything resolved since October 1st."
 - "Create a project for my new iOS app and give me the widget snippet."
+- "Group the open reports in starfall into themes, reuse existing labels, and show what needs work."
 
 ## Tools
 
@@ -145,13 +146,18 @@ Projects can be referenced by id or slug everywhere. Dates accept ISO 8601
 | --- | --- | --- |
 | `list_projects` | read | All projects with counters (open, new, bugs, feedback, spam, last activity). |
 | `get_project` | read | One project by id or slug, including its ingest key. |
-| `list_feedback` | read | Browse newest first. Filters: project, kind, status (default `open`), from, to, days, limit, offset. Optional `q` switches to relevance order. |
+| `list_feedback` | read | Browse newest first. Filters: project, kind, status (default `open`), from, to, days, label_ids, label_match (all/any), unlabeled, limit, offset. Optional `q` switches to relevance order. |
 | `search_feedback` | read | Relevance search with `mode` `hybrid` (default), `keyword`, `fuzzy` or `semantic`. Same filters, default status `all`. |
 | `get_feedback` | read | One item in full plus up to 5 similar items (duplicate spotting). |
 | `find_similar_feedback` | read | Items similar to an id or to free text. Falls back to lexical search when embeddings are off. |
 | `get_stats` | read | Totals, 30 day bug vs feedback series, anti-spam block counts, embedding status. |
 | `export_feedback` | read | All items of a project, oldest first, as JSON or CSV, paginated (max 1000 per call). |
 | `get_integration_snippets` | read | Hosted page URL, widget tags, ESM client and curl examples for a project. |
+| `list_labels` | read | Label definitions and non-spam/open report counts, optionally scoped by project. |
+| `create_label` | write | Project label with name, color and optional classification guidance in description. |
+| `update_label` | write | Rename or edit color/description by id; assignments follow the stable id. |
+| `delete_label` | write | Delete a definition and its assignments, keeping feedback. Needs `confirm: true`. |
+| `label_feedback` | write | Atomic add/remove/set label assignments on up to 500 feedback ids. Add/remove preserve unrelated labels. |
 | `create_project` | write | New project (title, slug, type, description, accepting). |
 | `update_project` | write | Change any project field, including pausing with `accepting=false`. |
 | `rotate_project_key` | write | New ingest key; the old one stops working at once. |
@@ -188,7 +194,7 @@ between 3 and 10000 characters`, `not_found: no feedback with id 42`,
 | URI | Content |
 | --- | --- |
 | `feedback-harvest://projects` | All projects with counters. |
-| `feedback-harvest://projects/{slug}` | One project plus its 25 newest open items. |
+| `feedback-harvest://projects/{slug}` | One project, its label definitions with counts, and its 25 newest open items. |
 | `feedback-harvest://feedback/{id}` | One item in full plus similar items. |
 
 All are `application/json`. Concrete project URIs appear in `resources/list`.
@@ -197,9 +203,19 @@ All are `application/json`. Concrete project URIs appear in `resources/list`.
 
 | Prompt | Arguments | Workflow |
 | --- | --- | --- |
+| `group_feedback_themes` | `project` (required) | Review and reuse a project taxonomy, page reports, propose themes, apply labels when authorized, and verify counts and evidence. |
 | `triage_inbox` | `project` (optional), `limit` (default 20) | Read every new item, spot duplicates with similar items, quarantine junk, triage actionable bugs with severity notes, archive the rest, report the top 3 issues. |
 | `summarize_feedback` | `project`, `days` (default 30) | Volume and trend, themes with counts and example ids, severe bugs, sentiment, recommended actions. |
 | `release_notes_from_resolved` | `project`, `since` (ISO date or days, default 14) | Friendly Fixes and Improvements notes from resolved items, with the source ids listed for review. |
+
+## Labels and thematic analysis
+
+Use the [agent theme guide](agent-themes.md) for classification workflows, MCP examples,
+pagination rules, and taxonomy maintenance. List/search results and feedback resources
+include labels. Label filters combine with existing status, date, project and search
+filters before pagination. `label_ids` is an integer array; `label_match` defaults to
+`all`, or use `any`. `unlabeled: true` finds reports without assignments and cannot be
+combined with label IDs. `summarize_feedback` analyzes themes without changing them.
 
 ## Example workflows
 

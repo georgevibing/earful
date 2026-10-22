@@ -7,7 +7,7 @@ feedback-harvest is deliberately boring: one process, one SQLite file, no queue,
 | Component | Where | Role |
 | --- | --- | --- |
 | HTTP server | `crates/server` (axum, tokio) | Public ingestion API, hosted form, admin API, static assets. |
-| Storage | SQLite via rusqlite (bundled, WAL mode) | Projects, feedback, sessions, rate counters, used challenges, block events, embeddings. |
+| Storage | SQLite via rusqlite (bundled, WAL mode) | Projects, feedback, labels, sessions, rate counters, used challenges, block events, embeddings. |
 | Keyword index | FTS5 table `feedback_fts`, `porter unicode61` tokenizer | Stemmed word search ranked by BM25. |
 | Fuzzy index | FTS5 table `feedback_tri`, `trigram` tokenizer | Substring and typo tolerant candidate retrieval. |
 | Vector index | `embeddings` table + in-memory `VectorIndex` | Semantic search and "similar items". Brute force cosine. |
@@ -28,6 +28,9 @@ feedback        id, project_id -> projects (cascade), kind (bug|feedback),
                 status (new|triaged|resolved|archived|spam), spam_reason, spam_score,
                 admin_note, content_hash, dup_count, ip_hash,
                 created_at, updated_at, last_seen_at
+labels          id, project_id -> projects (cascade), name, name_key (unique per project),
+                color, description, created_at, updated_at
+feedback_labels feedback_id, label_id, project_id (composite FKs enforce project scope)
 feedback_fts    FTS5 external content over feedback(title, body, contact)
 feedback_tri    FTS5 external content over feedback(title, body), trigram
 embeddings      feedback_id -> feedback (cascade), model, vec (f32 LE blob)
@@ -73,9 +76,19 @@ Four modes, selectable per query:
 - **Model2Vec** ([potion-base-8M](https://huggingface.co/minishlab/potion-base-8M), MIT): a static embedding model distilled from a sentence transformer. Encoding is tokenization plus a mean of per-token vectors from a 30 MB matrix, so it needs no ONNX runtime or GPU: about 13 µs per item and 20 ms to load in a release build, about 80 MB of extra RSS. Tokenization uses the pure Rust `fancy-regex` backend of `tokenizers`, so no C or C++ build. Input is capped at 2000 characters (`MAX_EMBED_CHARS`).
 - **Hybrid** (default): reciprocal rank fusion of the three lists, `score = sum(1 / (60 + rank))`. RRF ignores raw score scales, which differ wildly between BM25, edit distance and cosine, and rewards items that several retrievers agree on.
 
-Filters (project, kind, status, date range) are applied to the fused candidate set, then results are paginated. Without a query, lists are plain newest-first SQL.
+Filters (project, kind, status, date range, labels all/any, unlabeled) scope candidates before ranking and counting, then results are paginated. Without a query, lists are plain newest-first SQL.
 
 The vector index is brute force on purpose. At 10k items with 768 dimensions it is about 30 MB and a full scan takes a few milliseconds; an ANN index would add complexity for no visible gain at this scale.
+
+## Theme labels
+
+Labels and assignments are ordinary SQLite rows. Definition CRUD and atomic add/remove/set
+batches share `routes/labels.rs` operations across the admin API and MCP. Assignment
+updates preserve status and embeddings, use project-scoped foreign keys, and cascade
+when a project, report or label is deleted. Result pages hydrate labels in bounded
+batches instead of one query per report. There is no additional worker or model for
+labeling: agents classify through MCP when asked, guided by label descriptions and
+the `group_feedback_themes` prompt. See [agent workflows](agent-themes.md).
 
 ## Background worker
 

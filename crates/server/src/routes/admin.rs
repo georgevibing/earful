@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter, types::V
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{ClientIp, IdPath, JsonBody};
+use super::{ClientIp, IdPath, JsonBody, labels};
 use crate::{
     auth::{self, Admin, SESSION_COOKIE},
     crypto,
@@ -39,6 +39,12 @@ pub fn router() -> Router<AppState> {
         .route("/logout", post(logout))
         .route("/me", get(me))
         .route("/projects", get(list_projects).post(create_project))
+        .route("/labels", get(labels::list).post(labels::create))
+        .route(
+            "/labels/{id}",
+            axum::routing::patch(labels::update).delete(labels::remove),
+        )
+        .route("/feedback/labels", post(labels::assign))
         .route(
             "/projects/{id}",
             get(get_project)
@@ -540,9 +546,10 @@ pub(crate) async fn op_export_items(
                 "SELECT {} FROM feedback WHERE project_id = ?1 ORDER BY created_at, id",
                 Feedback::COLUMNS
             ))?;
-            let items = stmt
+            let mut items = stmt
                 .query_map(params![id], Feedback::from_row)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
+            labels::attach(c, &mut items)?;
             Ok(Some((slug, items)))
         })
         .await?
@@ -564,6 +571,7 @@ const CSV_HEADER: &[&str] = &[
     "admin_note",
     "created_at",
     "created_at_iso",
+    "labels",
 ];
 
 pub(crate) fn to_csv(items: &[Feedback]) -> String {
@@ -585,6 +593,8 @@ pub(crate) fn to_csv(items: &[Feedback]) -> String {
             f.admin_note.clone(),
             f.created_at.to_string(),
             iso(f.created_at),
+            serde_json::to_string(&f.labels.iter().map(|l| &l.name).collect::<Vec<_>>())
+                .unwrap_or_default(),
         ];
         out.push_str(
             &row.iter()
@@ -634,6 +644,9 @@ enum StatusFilter {
 }
 
 struct Filters {
+    label_ids: Vec<i64>,
+    label_any: bool,
+    unlabeled: bool,
     project_id: Option<i64>,
     kind: Option<&'static str>,
     status: StatusFilter,
@@ -670,6 +683,22 @@ impl Filters {
             clauses.push("created_at <= ?".into());
             args.push(SqlValue::Integer(t));
         }
+        if self.unlabeled {
+            clauses.push(
+                "NOT EXISTS(SELECT 1 FROM feedback_labels fl WHERE fl.feedback_id = feedback.id)"
+                    .into(),
+            );
+        }
+        if !self.label_ids.is_empty() {
+            let placeholders = vec!["?"; self.label_ids.len()].join(",");
+            let count = if self.label_any {
+                ">= 1".to_string()
+            } else {
+                format!("= {}", self.label_ids.len())
+            };
+            clauses.push(format!("(SELECT COUNT(*) FROM feedback_labels fl WHERE fl.feedback_id = feedback.id AND fl.label_id IN ({placeholders})) {count}"));
+            args.extend(self.label_ids.iter().map(|id| SqlValue::Integer(*id)));
+        }
         (clauses.join(" AND "), args)
     }
 }
@@ -705,7 +734,64 @@ fn parse_filters(q: &HashMap<String, String>) -> AppResult<Filters> {
                 .ok_or_else(|| AppError::bad("invalid_query", "unknown status filter"))?,
         ),
     };
+    let raw = q
+        .get("label_ids")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let label_ids: Vec<i64> = if let Some(raw) = raw {
+        let parts: Vec<_> = raw.split(',').collect();
+        if parts.len() > labels::MAX_LABELS {
+            return Err(AppError::bad("invalid_query", "at most 20 label ids"));
+        }
+        let ids = parts
+            .iter()
+            .map(|s| {
+                s.trim()
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|id| *id > 0)
+                    .ok_or_else(|| {
+                        AppError::bad(
+                            "invalid_query",
+                            "label_ids must be positive comma-separated integers",
+                        )
+                    })
+            })
+            .collect::<AppResult<std::collections::BTreeSet<_>>>()?;
+        ids.into_iter().collect()
+    } else {
+        vec![]
+    };
+    let label_any = match q.get("label_match").map(String::as_str) {
+        None | Some("all") => false,
+        Some("any") => true,
+        _ => {
+            return Err(AppError::bad(
+                "invalid_query",
+                "label_match must be all or any",
+            ));
+        }
+    };
+    let unlabeled = match q.get("unlabeled").map(String::as_str) {
+        None | Some("false") => false,
+        Some("true") => true,
+        _ => {
+            return Err(AppError::bad(
+                "invalid_query",
+                "unlabeled must be true or false",
+            ));
+        }
+    };
+    if unlabeled && !label_ids.is_empty() {
+        return Err(AppError::bad(
+            "invalid_query",
+            "unlabeled cannot be combined with label_ids",
+        ));
+    }
     Ok(Filters {
+        label_ids,
+        label_any,
+        unlabeled,
         project_id: parse_int(q, "project_id")?,
         kind,
         status,
@@ -826,7 +912,7 @@ fn fetch_ranked(
         .query_map(params_from_iter(args), Feedback::from_row)?
         .map(|r| r.map(|f| (f.id, f)))
         .collect::<rusqlite::Result<_>>()?;
-    Ok(ranked
+    let mut items: Vec<Feedback> = ranked
         .iter()
         .filter_map(|(id, score)| {
             rows.remove(id).map(|mut f| {
@@ -834,7 +920,9 @@ fn fetch_ranked(
                 f
             })
         })
-        .collect())
+        .collect();
+    labels::attach(c, &mut items)?;
+    Ok(items)
 }
 
 async fn list_feedback(
@@ -876,9 +964,10 @@ pub(crate) async fn op_list_feedback(
                     "SELECT {} FROM feedback WHERE {where_sql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
                     Feedback::COLUMNS
                 ))?;
-                let items = stmt
+                let mut items = stmt
                     .query_map(params_from_iter(page_args), Feedback::from_row)?
                     .collect::<rusqlite::Result<Vec<_>>>()?;
+                labels::attach(c, &mut items)?;
                 Ok((items, total))
             })
             .await?;
@@ -900,12 +989,17 @@ pub(crate) async fn op_list_feedback(
 }
 
 fn load_feedback(c: &Connection, id: i64) -> rusqlite::Result<Option<Feedback>> {
-    c.query_row(
-        &format!("SELECT {} FROM feedback WHERE id = ?1", Feedback::COLUMNS),
-        params![id],
-        Feedback::from_row,
-    )
-    .optional()
+    let mut item = c
+        .query_row(
+            &format!("SELECT {} FROM feedback WHERE id = ?1", Feedback::COLUMNS),
+            params![id],
+            Feedback::from_row,
+        )
+        .optional()?;
+    if let Some(item) = &mut item {
+        labels::attach(c, std::slice::from_mut(item))?;
+    }
+    Ok(item)
 }
 
 async fn get_feedback(
@@ -934,6 +1028,9 @@ pub(crate) async fn op_get_feedback(state: &AppState, id: i64) -> AppResult<Valu
         .unwrap_or_default();
     let ranked: Vec<(i64, f64)> = neighbours.into_iter().map(|(i, s)| (i, s as f64)).collect();
     let filters = Filters {
+        label_ids: vec![],
+        label_any: false,
+        unlabeled: false,
         project_id: Some(item.project_id),
         kind: None,
         status: StatusFilter::All,
@@ -959,6 +1056,9 @@ pub(crate) async fn op_similar_to_vector(
     let hits = state.index.search(vector, project_id, limit * 3, exclude);
     let ranked: Vec<(i64, f64)> = hits.into_iter().map(|(i, s)| (i, s as f64)).collect();
     let filters = Filters {
+        label_ids: vec![],
+        label_any: false,
+        unlabeled: false,
         project_id,
         kind: None,
         status: StatusFilter::All,

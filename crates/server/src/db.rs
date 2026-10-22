@@ -148,6 +148,31 @@ DROP TABLE block_events;
 ALTER TABLE feedback ADD COLUMN dup_checked INTEGER NOT NULL DEFAULT 0;
 UPDATE feedback SET dup_checked = 1 WHERE id IN (SELECT feedback_id FROM embeddings);
 "#,
+    r#"
+-- Project-scoped themes, with composite foreign keys enforcing assignment scope.
+CREATE UNIQUE INDEX feedback_id_project ON feedback(id, project_id);
+CREATE TABLE labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'slate',
+    description TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(project_id, name_key),
+    UNIQUE(id, project_id)
+);
+CREATE TABLE feedback_labels (
+    feedback_id INTEGER NOT NULL,
+    label_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    PRIMARY KEY(feedback_id, label_id),
+    FOREIGN KEY(feedback_id, project_id) REFERENCES feedback(id, project_id) ON DELETE CASCADE,
+    FOREIGN KEY(label_id, project_id) REFERENCES labels(id, project_id) ON DELETE CASCADE
+);
+CREATE INDEX feedback_labels_label ON feedback_labels(label_id, feedback_id);
+"#,
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

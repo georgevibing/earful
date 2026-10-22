@@ -5,14 +5,14 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 ## Repo map
 
 - `crates/server/` Rust server, binary `feedback-harvest` (`serve`, `hash-password`, `healthcheck`, `solve`, `download-model`, `mcp-stdio`)
-  - `src/routes/` HTTP handlers (`public.rs` ingestion + hosted form, `admin.rs`, `assets.rs`)
+  - `src/routes/` HTTP handlers (`public.rs` ingestion + hosted form, `admin.rs`, `labels.rs` shared label operations, `assets.rs`)
   - `src/mcp/` MCP server (`mod.rs` JSON-RPC transport, `tools.rs`, `resources.rs` resources + prompts, `bridge.rs` stdio bridge), `src/tokens.rs` API tokens
   - `src/db.rs` schema + migrations, `src/pow.rs` proof of work, `src/spam.rs` heuristics + client IP, `src/search.rs` keyword/fuzzy/RRF, `src/embed.rs` embedders + vector index, `src/worker.rs` background jobs
   - `tests/` HTTP integration tests
 - `apps/admin/` admin SPA (Preact, Vite), built to `dist/`, served at `/admin/`
 - `packages/widget/` browser client, PoW solver and `widget.js` (also used by `/s/<slug>`)
 - `e2e/` Playwright tests against the real binary
-- `docs/api.md` HTTP contract (source of truth), `docs/mcp.md` MCP guide, `docs/architecture.md`, `docs/deploy-coolify.md`, `docs/integrations.md`
+- `docs/api.md` HTTP contract (source of truth), `docs/mcp.md` MCP guide, `docs/agent-themes.md` agent classification workflows, `docs/architecture.md`, `docs/deploy-coolify.md`, `docs/integrations.md`
 
 ## Setup
 
@@ -46,7 +46,7 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 - The PoW algorithm is implemented in Rust (`pow.rs`) and TypeScript (`packages/widget`). Both test the same vector from `docs/api.md`; change both together.
 - `docs/api.md` is the contract. Update it in the same change as any API change.
 - Without `FH_ADMIN_PASSWORD_HASH`, every login fails. Keep auth fail-closed.
-- MCP tools (`src/mcp/tools.rs`) call the shared `op_*` functions in `routes/admin.rs` (and `public::op_create_feedback`). Never duplicate SQL or validation in MCP code; extract a shared op instead.
+- MCP tools (`src/mcp/tools.rs`) call the shared `op_*` functions in `routes/admin.rs` or `routes/labels.rs` (and `public::op_create_feedback`). Never duplicate SQL or validation in MCP code; extract a shared op instead.
 - Every MCP write tool sets `write: true` and is therefore hidden from and refused for `read` tokens. Destructive tools require a confirmation argument and `destructive: true`.
 - `/mcp` always requires a valid bearer token (`tokens::authenticate`). API tokens are stored only as SHA-256; never return or log raw tokens after creation.
 
@@ -77,3 +77,10 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 ## Writing style
 
 - Never use em dashes in code, comments, docs or commit messages. Use commas, colons, parentheses or separate sentences.
+
+## Labels and themes
+
+- Project-scoped labels use stable IDs; feedback has multiple labels. Composite foreign keys enforce project isolation and cascading assignment cleanup.
+- All definition and assignment logic lives in `routes/labels.rs` shared `op_*` functions. Assignments validate the entire batch in one transaction; prefer add/remove over replacing other actors' labels.
+- Keep label filters consistent across plain lists and all ranked search modes, including total counts before pagination. Hydrate labels for complete result pages with the batched `attach` query.
+- Update `docs/agent-themes.md` and MCP prompts when classification workflows change. Theme counts overlap; do not present them as unique users or votes.

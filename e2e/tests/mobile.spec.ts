@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { Feedback, Project, Stats } from '../../apps/admin/src/types';
+import type { Feedback, LabelSummary, Project, Stats } from '../../apps/admin/src/types';
 
 const longName = 'Space exploration project ' + 'x'.repeat(90);
 const project: Project = {
@@ -8,8 +8,9 @@ const project: Project = {
   ingest_key: 'fhk_' + 'a'.repeat(32), accepting: true, created_at: 1_700_000_000, updated_at: 1_700_000_000,
   stats: { total: 1, open: 1, new: 1, bugs: 1, feedback: 0, spam: 0, last_at: 1_700_000_000 },
 };
+const labels: LabelSummary[] = [{ id: 1, project_id: 1, name: 'Long theme ' + 'x'.repeat(53), color: 'blue', description: 'A long guidance ' + 'x'.repeat(250), created_at: 0, updated_at: 0, open_count: 1, feedback_count: 1 }];
 const feedback: Feedback = {
-  id: 1, project_id: 1, kind: 'bug', title: 'A very long crash report ' + 'x'.repeat(150),
+  id: 1, project_id: 1, labels, kind: 'bug', title: 'A very long crash report ' + 'x'.repeat(150),
   body: 'Crash details: ' + 'x'.repeat(250), contact: 'x'.repeat(120) + '@example.com',
   rating: 4, meta: { url: 'https://example.com/' + 'x'.repeat(200) }, source: 'web', status: 'new',
   spam_reason: null, spam_score: 0, admin_note: '', dup_count: 0,
@@ -26,7 +27,7 @@ async function mockApi(page: Page) {
   await page.route('**/api/admin/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/logout')) return route.fulfill({ status: 204 });
-    const data = path.endsWith('/me') ? { ok: true }
+    const data = path.endsWith('/labels') ? labels : path.endsWith('/me') ? { ok: true }
       : path.endsWith('/stats') ? stats
       : path.endsWith('/projects') ? [project, { ...project, id: 2, title: 'Below the Glow', slug: 'below-the-glow' }]
       : path.endsWith('/projects/1') ? project
@@ -134,6 +135,12 @@ for (const width of [320, 390, 768, 1280]) {
           }
         }
         if (path === '/feedback?open=1') {
+          await page.locator('.label-filters summary').click();
+          await expect(page.getByLabel('Match labels')).toBeVisible();
+          await fitsViewport(page);
+          await page.getByLabel('Select all', { exact: true }).check();
+          await expect(page.getByLabel('Bulk label')).toBeVisible();
+          await fitsViewport(page);
           await page.getByLabel('Date range').selectOption('custom');
           await expect(page.getByLabel('From', { exact: true })).toBeVisible();
           await fitsViewport(page);

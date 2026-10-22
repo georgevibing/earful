@@ -928,3 +928,39 @@ kbd {
   border-color: var(--ink-2);
   font-weight: 600;
 }
+
+/* Project-scoped themes and label controls. */
+.label-chip {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--label-color, var(--muted));
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.label-slate { --label-color: #8892a0; }
+.label-blue { --label-color: #3987e5; }
+.label-green { --label-color: #27a169; }
+.label-amber { --label-color: #d79b24; }
+.label-red { --label-color: #e66767; }
+.label-violet { --label-color: #9d79dc; }
+.label-pink { --label-color: #d575ad; }
+.label-list { list-style: none; padding: 0; margin: 0; }
+.label-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+.label-list > li:last-child { border-bottom: 0; }
+.label-list > li > .stack { flex: 1 1 240px; }
+.label-options { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 240px; overflow: auto; }
+.label-options .check { min-width: 0; max-width: 100%; min-height: 36px; }
+.label-options input { flex: none; }
+.label-filters { margin-bottom: 10px; }
+.label-filters summary { cursor: pointer; color: var(--ink-2); padding: 6px 0; }
+.label-filter-content { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.bulk-labels { flex-basis: 100%; padding-top: 6px; border-top: 1px solid var(--border); }
+
+.label-list > li > * { min-width: 0; max-width: 100%; }
+.bulk-labels select { flex: 1 1 180px; width: 0; min-width: 0; max-width: 100%; }

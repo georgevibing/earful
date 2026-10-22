@@ -1,5 +1,6 @@
 import type {
   ApiToken,
+  LabelSummary, LabelInput, LabelAction,
   BulkAction,
   CreatedToken,
   Feedback,
@@ -32,7 +33,7 @@ export function setUnauthorizedHandler(fn: () => void): void {
   onUnauthorized = fn;
 }
 
-type Query = Record<string, string | number | undefined | null>;
+type Query = Record<string, string | number | boolean | undefined | null>;
 
 export function buildQuery(params: Query): string {
   const sp = new URLSearchParams();
@@ -90,6 +91,9 @@ export interface FeedbackQuery {
   to?: number;
   limit?: number;
   offset?: number;
+  label_ids?: string;
+  label_match?: 'all' | 'any';
+  unlabeled?: boolean;
 }
 
 export const api = {
@@ -112,6 +116,12 @@ export const api = {
   deleteFeedback: (id: number) => request<void>('DELETE', `/api/admin/feedback/${id}`),
   bulk: (ids: number[], action: BulkAction) =>
     request<{ affected: number }>('POST', '/api/admin/feedback/bulk', { ids, ...action }),
+
+  labels: (projectId?: number) => request<LabelSummary[]>('GET', `/api/admin/labels${buildQuery({ project_id: projectId })}`),
+  createLabel: (projectId: number, input: LabelInput) => request<LabelSummary>('POST', '/api/admin/labels', { ...input, project_id: projectId }),
+  updateLabel: (id: number, input: Partial<LabelInput>) => request<LabelSummary>('PATCH', `/api/admin/labels/${id}`, input),
+  deleteLabel: (id: number) => request<void>('DELETE', `/api/admin/labels/${id}`),
+  assignLabels: (ids: number[], labelIds: number[], action: LabelAction) => request<{ affected: number }>('POST', '/api/admin/feedback/labels', { ids, label_ids: labelIds, action }),
 
   stats: (projectId?: number) => request<Stats>('GET', `/api/admin/stats${buildQuery({ project_id: projectId })}`),
   reindex: () => request<{ ok: boolean }>('POST', '/api/admin/reindex'),

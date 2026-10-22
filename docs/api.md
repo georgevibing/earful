@@ -111,6 +111,46 @@ Project object:
 - `POST /api/admin/projects/:id/rotate-key` gives `200 Project` with a new `ingest_key`.
 - `GET /api/admin/projects/:id/export?format=json|csv` gives a download (`Content-Disposition: attachment; filename="<slug>-feedback.<ext>"`), all statuses, oldest first. CSV cells starting with `= + - @` are prefixed with `'` to prevent formula injection. `400 invalid_format`.
 
+### Labels and themes
+
+Labels belong to one project. Feedback can have several labels (at most 20).
+Names are trimmed, 1..64 characters, unique within a project after Unicode
+lowercasing. Descriptions (up to 500 characters) define when a theme applies.
+Colors are `slate` (default), `blue`, `green`, `amber`, `red`, `violet`, or `pink`.
+Labels are admin-only metadata: anonymous submissions cannot create or assign them.
+
+Label object: `{id, project_id, name, color, description, created_at, updated_at}`.
+List/create/update responses also contain `feedback_count` (excluding spam) and
+`open_count` (new + triaged). Counts overlap when items have multiple labels.
+
+- `GET /api/admin/labels?project_id=<optional>` lists labels ordered by open count,
+  then name and id. Omit project_id for all projects. An unknown project gives 404.
+- `POST /api/admin/labels` `{project_id, name, color?, description?}` gives `201 Label`.
+  At most 200 labels per project. Duplicate names give `409 conflict`.
+- `PATCH /api/admin/labels/:id` `{name?, color?, description?}` gives `200 Label`.
+  Rename keeps the id and assignments. A label cannot move to another project.
+- `DELETE /api/admin/labels/:id` gives `204`. Removes assignments, never feedback.
+- `POST /api/admin/feedback/labels` `{ids, label_ids, action}` gives `{affected}`:
+  `ids` contains 1..500 feedback ids; `label_ids` contains at most 20 label ids;
+  `action` is `add`, `remove`, or `set`. Add/remove preserve unrelated labels and
+  are safe to retry. Set replaces the complete set; `set` with `[]` clears it.
+  All ids must exist and every label must belong to every target feedback's
+  project. Validation and writes are atomic: one invalid id means no changes.
+  `affected` counts feedback whose assignments changed (deduplicated ids).
+  Empty label_ids are valid only for set. Over-limit or invalid inputs give
+  `400 invalid_labels`; unknown ids give 404. Failed writes never partially apply.
+
+Feedback objects, similar-item responses and JSON exports include `labels: [Label]`.
+CSV exports append a `labels` column containing a JSON array of label names.
+Assignment changes update the feedback's updated_at, but do not change its status or
+embedding. Label definitions and assignments survive restarts and redeployments.
+
+Feedback list/search accepts `label_ids=1,2`, `label_match=all|any` (default all),
+and `unlabeled=true|false` (default false). These combine with every existing
+filter and search mode before pagination/counting. Unlabeled excludes every
+labeled item and cannot be combined with label_ids. Invalid combinations give
+`400 invalid_query`. Unknown label ids match no items; with any matching, known selected ids can still match.
+
 ### Feedback
 
 Feedback object:

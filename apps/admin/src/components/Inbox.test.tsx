@@ -8,6 +8,7 @@ function item(id: number, over: Partial<Feedback> = {}): Feedback {
   return {
     id,
     project_id: 1,
+    labels: [],
     kind: 'bug',
     title: `Crash number ${id}`,
     body: 'The game crashes when opening the inventory.',
@@ -38,6 +39,7 @@ afterEach(() => {
 describe('Inbox', () => {
   it('renders items with highlights, badges and the semantic notice', async () => {
     const calls = mockFetch({
+      'GET /api/admin/labels': () => ({ body: [] }),
       'GET /api/admin/projects': () => ({ body: [project] }),
       'GET /api/admin/feedback': () => ({
         body: { items: [item(1, { dup_count: 3, rating: 4 }), item(2, { kind: 'feedback', title: 'Love it', body: 'great' })], total: 2, mode: 'hybrid', semantic: false },
@@ -64,6 +66,7 @@ describe('Inbox', () => {
 
   it('runs bulk actions on the selection and refetches', async () => {
     const calls = mockFetch({
+      'GET /api/admin/labels': () => ({ body: [] }),
       'GET /api/admin/projects': () => ({ body: [project] }),
       'GET /api/admin/feedback': () => ({ body: { items: [item(1), item(2), item(3)], total: 3, mode: 'hybrid', semantic: true } }),
       'POST /api/admin/feedback/bulk': (c) => ({ body: { affected: (c.body as { ids: number[] }).ids.length } }),
@@ -85,6 +88,7 @@ describe('Inbox', () => {
 
   it('deletes only after confirmation', async () => {
     const calls = mockFetch({
+      'GET /api/admin/labels': () => ({ body: [] }),
       'GET /api/admin/projects': () => ({ body: [] }),
       'GET /api/admin/feedback': () => ({ body: { items: [item(1)], total: 1, mode: 'hybrid', semantic: true } }),
       'POST /api/admin/feedback/bulk': () => ({ body: { affected: 1 } }),
@@ -101,6 +105,7 @@ describe('Inbox', () => {
 
   it('focuses search with / and opens the cursor item with j and Enter', async () => {
     mockFetch({
+      'GET /api/admin/labels': () => ({ body: [] }),
       'GET /api/admin/projects': () => ({ body: [] }),
       'GET /api/admin/feedback': () => ({ body: { items: [item(1), item(2)], total: 2, mode: 'hybrid', semantic: true } }),
     });
@@ -116,6 +121,7 @@ describe('Inbox', () => {
 
   it('does not hijack Enter while a button or link has focus', async () => {
     mockFetch({
+      'GET /api/admin/labels': () => ({ body: [] }),
       'GET /api/admin/projects': () => ({ body: [] }),
       'GET /api/admin/feedback': () => ({ body: { items: [item(1)], total: 1, mode: 'hybrid', semantic: true } }),
     });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { ProjectLabels } from './Labels';
 import { api } from '../api';
 import { DEFAULT_FILTERS, filtersToParams } from '../filters';
 import { href, navigate } from '../router';
@@ -111,6 +112,8 @@ export function ProjectDetail({ id }: { id: number }) {
           </div>
         ))}
       </section>
+
+      <ProjectLabels projectId={p.id} />
 
       <section class="card danger-zone stack">
         <h2>Delete project</h2>

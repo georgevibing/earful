@@ -44,7 +44,26 @@ export interface ProjectInput {
   accepting?: boolean;
 }
 
+export const LABEL_COLORS = ['slate', 'blue', 'green', 'amber', 'red', 'violet', 'pink'] as const;
+export type LabelColor = (typeof LABEL_COLORS)[number];
+export interface Label {
+  id: number;
+  project_id: number;
+  name: string;
+  color: LabelColor;
+  description: string;
+  created_at: number;
+  updated_at: number;
+}
+export interface LabelSummary extends Label {
+  feedback_count: number;
+  open_count: number;
+}
+export interface LabelInput { name: string; color: LabelColor; description: string }
+export type LabelAction = 'add' | 'remove' | 'set';
+
 export interface Feedback {
+  labels: Label[];
   id: number;
   project_id: number;
   kind: Kind;

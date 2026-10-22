@@ -31,3 +31,13 @@ describe('filters', () => {
     expect(toApiQuery({ ...DEFAULT_FILTERS, q: 'x', mode: 'keyword' }, 1, 0)).toMatchObject({ q: 'x', mode: 'keyword' });
   });
 });
+
+it('preserves label matching in shareable links and API queries', () => {
+  const f = { ...DEFAULT_FILTERS, projectId: 4, labelIds: [3, 9], labelMatch: 'any' as const };
+  expect(filtersFromParams(filtersToParams(f))).toMatchObject(f);
+  expect(toApiQuery(f, 50, 0)).toMatchObject({ project_id: 4, label_ids: '3,9', label_match: 'any' });
+  const unlabeled = { ...f, unlabeled: true };
+  expect(filtersToParams(unlabeled).has('label_ids')).toBe(false);
+  expect(toApiQuery(unlabeled, 50, 0)).toMatchObject({ unlabeled: true, label_ids: undefined, label_match: undefined });
+  expect(filtersFromParams(new URLSearchParams('label_ids=3,3,-1,9,bogus'))).toMatchObject({ labelIds: [3, 9] });
+});

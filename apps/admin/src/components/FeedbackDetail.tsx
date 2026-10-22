@@ -4,6 +4,7 @@ import { toast } from '../toast';
 import { KINDS, STATUSES, type Feedback, type FeedbackDetail as Detail, type FeedbackPatch, type Kind } from '../types';
 import { formatDateTime, relativeTime } from '../util';
 import { Highlight } from './Highlight';
+import { FeedbackLabels } from './Labels';
 
 interface Props {
   id: number;
@@ -117,6 +118,8 @@ export function FeedbackDetail({ id, terms, projectName, openHref, onClose, onCh
           </button>
         ))}
       </div>
+
+      <FeedbackLabels item={f} onChanged={(item) => { setDetail({ ...detail, item }); onChanged(item); }} />
 
       <dl>
         <dt>Project</dt>

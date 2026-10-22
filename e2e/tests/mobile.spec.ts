@@ -81,6 +81,25 @@ for (const width of [320, 390, 768, 1280]) {
         await page.goto('/admin/#' + path);
         await expect(page.locator(ready).first()).toBeVisible();
         await fitsViewport(page);
+        if (path === '/') {
+          const cards = page.locator('.kpis .tile');
+          await expect(cards).toHaveCount(6);
+          const heights = await cards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+          expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1);
+          // Content should align within each card even when only one has a subtitle.
+          for (const selector of ['.label', '.value']) {
+            const offsets = await cards.evaluateAll((els, child) => els.map((el) =>
+              el.querySelector(child)!.getBoundingClientRect().top - el.getBoundingClientRect().top,
+            ), selector);
+            expect(Math.max(...offsets) - Math.min(...offsets)).toBeLessThan(1);
+          }
+          if (width < 700) {
+            const fontSizes = await page.locator('.kpis .value').evaluateAll((els) =>
+              els.map((el) => getComputedStyle(el).fontSize),
+            );
+            expect(new Set(fontSizes).size).toBe(1);
+          }
+        }
         if (path === '/' || path === '/projects') {
           const titles = page.locator('.project-title a');
           await expect(titles).toHaveCount(2);

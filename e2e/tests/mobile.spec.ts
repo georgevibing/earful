@@ -81,6 +81,24 @@ for (const width of [320, 390, 768, 1280]) {
         await page.goto('/admin/#' + path);
         await expect(page.locator(ready).first()).toBeVisible();
         await fitsViewport(page);
+        if (path === '/projects') {
+          const table = page.locator('.table-wrap table');
+          // A page can fit the viewport while its columns become unreadable.
+          for (const heading of ['Type', 'Open', 'Total', 'Spam', 'Last submission']) {
+            const header = table.getByRole('columnheader', { name: heading, exact: true });
+            const height = await header.evaluate((el) => el.getBoundingClientRect().height);
+            expect(height).toBeLessThan(50);
+          }
+          const type = table.getByRole('cell', { name: 'game', exact: true });
+          expect(await type.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(40);
+          if (width < 700) {
+            const scroller = page.locator('.table-wrap');
+            expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBeTruthy();
+            await scroller.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+            await expect(table.getByRole('columnheader', { name: 'Last submission' })).toBeInViewport({ ratio: 1 });
+            await fitsViewport(page);
+          }
+        }
         if (path === '/feedback?open=1') {
           await page.getByLabel('Date range').selectOption('custom');
           await expect(page.getByLabel('From', { exact: true })).toBeVisible();

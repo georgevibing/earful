@@ -361,6 +361,14 @@ table.data tbody tr:hover {
   overflow-x: auto;
 }
 
+/* Keep table columns readable; wide tables scroll inside their wrapper. */
+.table-wrap table.data {
+  overflow-wrap: normal;
+}
+.table-wrap table.data th {
+  white-space: nowrap;
+}
+
 /* Badges */
 .badge {
   display: inline-flex;

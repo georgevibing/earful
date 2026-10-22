@@ -105,15 +105,15 @@ export function LabelFilters({ filters, update, revision }: { filters: Filters; 
   return <details class="label-filters" open={active || undefined}>
     <summary>Labels{filters.unlabeled ? ' (unlabeled only)' : selected.length ? ` (${selected.length})` : ''}</summary>
     <div class="stack label-filter-content">
-      <div class="row">
+      <div class="label-filter-controls">
         <label class="check"><input type="checkbox" checked={!!filters.unlabeled} onChange={(e) => update({ unlabeled: e.currentTarget.checked || undefined, labelIds: undefined, labelMatch: undefined, open: undefined })} />Unlabeled only</label>
-        <label class="field">Match labels<select value={filters.labelMatch ?? 'all'} disabled={!!filters.unlabeled} onChange={(e) => update({ labelMatch: e.currentTarget.value === 'any' ? 'any' : undefined, open: undefined })}><option value="all">All selected labels</option><option value="any">Any selected label</option></select></label>
+        {!!labels?.length && <label class="field">Match labels<select value={filters.labelMatch ?? 'all'} disabled={!!filters.unlabeled} onChange={(e) => update({ labelMatch: e.currentTarget.value === 'any' ? 'any' : undefined, open: undefined })}><option value="all">All selected labels</option><option value="any">Any selected label</option></select></label>}
         {active && <button class="small" onClick={() => update({ labelIds: undefined, labelMatch: undefined, unlabeled: undefined, open: undefined })}>Clear labels</button>}
       </div>
       {failed ? <div role="alert">Could not load labels. <button onClick={refresh}>Retry</button></div>
         : labels === null ? <span class="muted small">Loading labels...</span>
-        : labels.length === 0 ? <span class="muted small">No labels in this scope.</span>
-        : <div class="label-options">{labels.map((label) => <label class="check" key={label.id} title={label.description}>
+        : labels.length === 0 ? <p class="small muted label-filter-empty">No labels yet. Create labels in a project to filter feedback by theme. <a href={filters.projectId ? `#/projects/${filters.projectId}` : '#/projects'}>Manage labels</a></p>
+        : <div class="label-options label-filter-options">{labels.map((label) => <label class={`check label-filter-option${selected.includes(label.id) ? ' selected' : ''}`} key={label.id} title={label.description}>
           <input type="checkbox" disabled={!!filters.unlabeled || (selected.length >= 20 && !selected.includes(label.id))} checked={selected.includes(label.id)} onChange={(e) => update({ labelIds: e.currentTarget.checked ? [...selected, label.id] : selected.filter((id) => id !== label.id), open: undefined })} />
           <LabelChip label={label} /><span class="small muted">{label.open_count} open</span>
         </label>)}</div>}

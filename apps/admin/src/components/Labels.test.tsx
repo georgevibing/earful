@@ -76,6 +76,15 @@ describe('labels', () => {
     expect(update).toHaveBeenCalledWith({ unlabeled: true, labelIds: undefined, labelMatch: undefined, open: undefined });
   });
 
+  it('keeps the empty filter panel useful without a meaningless match selector', async () => {
+    mockFetch({ 'GET /api/admin/labels': () => ({ body: [] }) });
+    render(<LabelFilters filters={{ ...DEFAULT_FILTERS, projectId: 1, unlabeled: true }} update={() => {}} />);
+    const manage = await screen.findByRole('link', { name: 'Manage labels' });
+    expect(manage.getAttribute('href')).toBe('#/projects/1');
+    expect(screen.queryByLabelText('Match labels')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Unlabeled only' })).toBeTruthy();
+  });
+
   it('prevents bulk labeling across projects', async () => {
     mockFetch({ 'GET /api/admin/labels': () => ({ body: [label] }) });
     render(<BulkLabels items={[{ id: 1, project_id: 1 }, { id: 2, project_id: 2 }] as Feedback[]} ids={[1, 2]} onChanged={() => {}} />);

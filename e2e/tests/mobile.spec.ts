@@ -104,6 +104,19 @@ for (const width of [320, 390, 768, 1280]) {
       await expect(tabs.getByRole('tab', { name: 'Spam', exact: true })).toBeInViewport({ ratio: 0.99 });
     });
 
+    test('empty label filters stay compact and point to label management', async ({ page }) => {
+      await page.route('**/api/admin/labels*', (route) => route.fulfill({ json: [] }));
+      await page.goto('/admin/#/feedback');
+      await page.locator('.label-filters summary').click();
+      const panel = page.locator('.label-filter-content');
+      await expect(panel.getByRole('link', { name: 'Manage labels' })).toBeVisible();
+      await expect(panel.getByLabel('Match labels')).toHaveCount(0);
+      const checkbox = panel.getByRole('checkbox', { name: 'Unlabeled only' });
+      await expect(checkbox).toBeVisible();
+      expect((await checkbox.locator('..').boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await fitsViewport(page);
+    });
+
     for (const [path, ready] of [
       ['/', '.kpis'], ['/projects', '.table-wrap'], ['/projects/1', '.key-box'],
       ['/projects/1/edit', '.form-grid'], ['/feedback?open=1', '.detail'], ['/tokens', '.table-wrap'],
@@ -167,6 +180,18 @@ for (const width of [320, 390, 768, 1280]) {
         if (path === '/feedback?open=1') {
           await page.locator('.label-filters summary').click();
           await expect(page.getByLabel('Match labels')).toBeVisible();
+          if (width < 700) {
+            const unlabeled = await page.getByRole('checkbox', { name: 'Unlabeled only' }).locator('..').boundingBox();
+            const matching = await page.getByLabel('Match labels').boundingBox();
+            expect(matching!.y).toBeGreaterThanOrEqual(unlabeled!.y + unlabeled!.height);
+            const panel = await page.locator('.label-filter-content').boundingBox();
+            expect(matching!.width).toBeGreaterThan(panel!.width - 40);
+            const option = page.locator('.label-filter-option').first();
+            await expect(option).toBeVisible();
+            const optionBox = await option.boundingBox();
+            expect(optionBox!.height).toBeGreaterThanOrEqual(44);
+            expect(optionBox!.width).toBeGreaterThan(panel!.width - 40);
+          }
           await fitsViewport(page);
           await page.getByLabel('Select all', { exact: true }).check();
           await expect(page.getByLabel('Bulk label')).toBeVisible();

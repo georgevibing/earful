@@ -963,8 +963,25 @@ kbd {
 .label-options input { flex: none; }
 .label-filters { margin-bottom: 10px; }
 .label-filters summary { cursor: pointer; color: var(--ink-2); padding: 6px 0; }
-.label-filter-content { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.label-filter-content { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .bulk-labels { flex-basis: 100%; padding-top: 6px; border-top: 1px solid var(--border); }
 
 .label-list > li > * { min-width: 0; max-width: 100%; }
 .bulk-labels select { flex: 1 1 180px; width: 0; min-width: 0; max-width: 100%; }
+
+.label-filter-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.label-filter-controls .check { min-height: 44px; }
+.label-filter-controls .field { min-width: 0; }
+.label-filter-controls select { width: 100%; min-height: 44px; }
+.label-filter-controls button { min-height: 44px; }
+.label-filter-empty { margin: 0; line-height: 1.6; }
+.label-filter-empty a { display: inline-block; }
+.label-filter-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.label-filter-options .label-filter-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 8px; min-height: 44px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); cursor: pointer; }
+.label-filter-option.selected { border-color: var(--accent); background: var(--accent-wash); }
+.label-filter-option .label-chip { justify-self: start; }
+.label-filter-option > .muted { white-space: nowrap; }
+@media (max-width: 699px) {
+  .label-filter-controls, .label-filter-options { grid-template-columns: minmax(0, 1fr); }
+  .label-filter-controls > button { justify-self: start; }
+}

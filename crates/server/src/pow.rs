@@ -130,14 +130,38 @@ mod tests {
         let token = issue(SECRET, 7, 1_000_000, 8);
         let nonce = solve(&token, 8);
         let tampered = token.replacen("v1.7.", "v1.8.", 1);
-        assert_eq!(verify(SECRET, &tampered, &nonce, 8, 1_000_000, 60), Err(PowError::BadSignature));
-        assert_eq!(verify(SECRET, &token, &nonce, 9, 1_000_000, 60), Err(PowError::WrongProject));
-        assert_eq!(verify(SECRET, &token, &nonce, 7, 1_000_000 + 61_000, 60), Err(PowError::Expired));
-        assert_eq!(verify(b"other", &token, &nonce, 7, 1_000_000, 60), Err(PowError::BadSignature));
-        assert_eq!(verify(SECRET, "garbage", &nonce, 7, 1_000_000, 60), Err(PowError::Malformed));
-        assert_eq!(verify(SECRET, &token, "abc", 7, 1_000_000, 60), Err(PowError::InsufficientWork));
-        let bad = (0u64..).map(|n| n.to_string()).find(|n| work_bits(&token, n) < 8).unwrap();
-        assert_eq!(verify(SECRET, &token, &bad, 7, 1_000_000, 60), Err(PowError::InsufficientWork));
+        assert_eq!(
+            verify(SECRET, &tampered, &nonce, 8, 1_000_000, 60),
+            Err(PowError::BadSignature)
+        );
+        assert_eq!(
+            verify(SECRET, &token, &nonce, 9, 1_000_000, 60),
+            Err(PowError::WrongProject)
+        );
+        assert_eq!(
+            verify(SECRET, &token, &nonce, 7, 1_000_000 + 61_000, 60),
+            Err(PowError::Expired)
+        );
+        assert_eq!(
+            verify(b"other", &token, &nonce, 7, 1_000_000, 60),
+            Err(PowError::BadSignature)
+        );
+        assert_eq!(
+            verify(SECRET, "garbage", &nonce, 7, 1_000_000, 60),
+            Err(PowError::Malformed)
+        );
+        assert_eq!(
+            verify(SECRET, &token, "abc", 7, 1_000_000, 60),
+            Err(PowError::InsufficientWork)
+        );
+        let bad = (0u64..)
+            .map(|n| n.to_string())
+            .find(|n| work_bits(&token, n) < 8)
+            .unwrap();
+        assert_eq!(
+            verify(SECRET, &token, &bad, 7, 1_000_000, 60),
+            Err(PowError::InsufficientWork)
+        );
     }
 
     /// Shared vector with `packages/widget/src/pow.test.ts`. Keep both in sync.

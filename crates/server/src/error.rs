@@ -12,6 +12,8 @@ pub enum AppError {
     BadRequest(&'static str, String),
     #[error("unauthorized")]
     Unauthorized,
+    #[error("invalid credentials")]
+    InvalidCredentials,
     #[error("{1}")]
     Forbidden(&'static str, String),
     #[error("not found")]
@@ -42,7 +44,16 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
             AppError::BadRequest(code, msg) => (StatusCode::BAD_REQUEST, *code, msg.clone()),
-            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", "login required".into()),
+            AppError::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "login required".into(),
+            ),
+            AppError::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+                "wrong password".into(),
+            ),
             AppError::Forbidden(code, msg) => (StatusCode::FORBIDDEN, *code, msg.clone()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found", "not found".into()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
@@ -53,7 +64,11 @@ impl IntoResponse for AppError {
             ),
             AppError::Internal(err) => {
                 tracing::error!(error = ?err, "internal error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal", "internal error".into())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal",
+                    "internal error".into(),
+                )
             }
         };
         let mut resp = (status, Json(json!({ "error": code, "message": message }))).into_response();

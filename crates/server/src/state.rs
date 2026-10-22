@@ -53,7 +53,11 @@ fn load_index(conn: &rusqlite::Connection, embedder: &Embedder, index: &VectorIn
          JOIN feedback f ON f.id = e.feedback_id WHERE e.model = ?1",
     )?;
     let rows = stmt.query_map(params![embedder.model_id()], |r| {
-        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, Vec<u8>>(2)?))
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, Vec<u8>>(2)?,
+        ))
     })?;
     for row in rows {
         let (id, project_id, blob) = row?;

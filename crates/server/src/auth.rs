@@ -8,7 +8,7 @@ use argon2::{
 };
 use axum::{
     extract::FromRequestParts,
-    http::{Method, header, request::Parts},
+    http::{HeaderMap, Method, header, request::Parts},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use rusqlite::{OptionalExtension, params};
@@ -32,7 +32,8 @@ pub fn hash_password(password: &str) -> anyhow::Result<String> {
 /// Constant-ish time: always runs argon2, even when no admin hash is configured.
 pub fn verify_password(configured: Option<&str>, password: &str) -> bool {
     // A throwaway hash so the "not configured" path costs the same as a real check.
-    static DUMMY: LazyLock<String> = LazyLock::new(|| hash_password("unconfigured").unwrap_or_default());
+    static DUMMY: LazyLock<String> =
+        LazyLock::new(|| hash_password("unconfigured").unwrap_or_default());
     let (hash, real) = match configured {
         Some(h) => (h, true),
         None => (DUMMY.as_str(), false),
@@ -41,7 +42,9 @@ pub fn verify_password(configured: Option<&str>, password: &str) -> bool {
         tracing::error!("FH_ADMIN_PASSWORD_HASH is not a valid argon2 PHC string");
         return false;
     };
-    let ok = Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok();
+    let ok = Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok();
     ok && real
 }
 
@@ -93,7 +96,10 @@ pub async fn destroy_session(state: &AppState, token: &str) -> AppResult<()> {
     state
         .db
         .call(move |c| {
-            c.execute("DELETE FROM sessions WHERE token_hash = ?1", params![token_hash])?;
+            c.execute(
+                "DELETE FROM sessions WHERE token_hash = ?1",
+                params![token_hash],
+            )?;
             Ok(())
         })
         .await?;
@@ -108,9 +114,18 @@ pub struct Admin;
 impl FromRequestParts<AppState> for Admin {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        if parts.method != Method::GET && parts.method != Method::HEAD && !same_origin(parts) {
-            return Err(AppError::Forbidden("bad_origin", "cross origin request rejected".into()));
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        if parts.method != Method::GET
+            && parts.method != Method::HEAD
+            && !same_origin(&parts.headers)
+        {
+            return Err(AppError::Forbidden(
+                "bad_origin",
+                "cross origin request rejected".into(),
+            ));
         }
         let jar = CookieJar::from_headers(&parts.headers);
         let Some(token) = jar.get(SESSION_COOKIE).map(|c| c.value().to_string()) else {
@@ -133,18 +148,25 @@ impl FromRequestParts<AppState> for Admin {
                 .is_some())
             })
             .await?;
-        if valid { Ok(Admin) } else { Err(AppError::Unauthorized) }
+        if valid {
+            Ok(Admin)
+        } else {
+            Err(AppError::Unauthorized)
+        }
     }
 }
 
 /// Accepts requests without an Origin header (non-browser clients cannot carry
 /// our SameSite=Strict cookie cross-site anyway) or whose Origin host matches Host.
-fn same_origin(parts: &Parts) -> bool {
-    let Some(origin) = parts.headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
+pub fn same_origin(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
         return true;
     };
-    let host = parts.headers.get(header::HOST).and_then(|v| v.to_str().ok());
-    let origin_host = origin.split_once("://").map(|(_, rest)| rest).unwrap_or(origin);
+    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok());
+    let origin_host = origin
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(origin);
     host.is_some_and(|h| h.eq_ignore_ascii_case(origin_host))
 }
 

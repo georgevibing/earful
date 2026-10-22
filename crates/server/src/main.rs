@@ -1,1 +1,151 @@
-fn main() {}
+use std::{
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
+    process::ExitCode,
+    time::Duration,
+};
+
+use anyhow::{Context, Result, bail};
+use feedback_harvest::{auth, build_router, config::Config, pow, state::AppState, worker};
+use tracing_subscriber::EnvFilter;
+
+const HELP: &str = "feedback-harvest: tiny self-hosted feedback and bug report collector
+
+USAGE:
+    feedback-harvest [COMMAND]
+
+COMMANDS:
+    serve                      Run the HTTP server (default)
+    hash-password              Read a password from stdin, print its argon2id hash
+                               for FH_ADMIN_PASSWORD_HASH
+    healthcheck                Exit 0 if the local server answers /healthz (for Docker)
+    solve <challenge> <bits>   Print a proof of work nonce for a challenge (for testing)
+    help, --help, -h           Show this help
+
+Configuration is read from FH_* environment variables, see README.md.";
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.first().map(String::as_str) {
+        None | Some("serve") => serve(),
+        Some("hash-password") => hash_password(),
+        Some("healthcheck") => healthcheck(),
+        Some("solve") => solve(&args[1..]),
+        Some("help" | "--help" | "-h") => {
+            println!("{HELP}");
+            Ok(())
+        }
+        Some(other) => {
+            eprintln!("unknown command {other:?}\n\n{HELP}");
+            return ExitCode::from(2);
+        }
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn serve() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+    let cfg = Config::from_env()?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run(cfg))
+}
+
+async fn run(cfg: Config) -> Result<()> {
+    if cfg.admin_password_hash.is_none() {
+        tracing::warn!(
+            "FH_ADMIN_PASSWORD_HASH is not set: every admin login will be rejected. \
+             Generate one with `feedback-harvest hash-password`."
+        );
+    }
+    let bind = cfg.bind;
+    let state = AppState::init(cfg).await?;
+    worker::spawn(state.clone());
+    let app = build_router(state);
+    let listener = tokio::net::TcpListener::bind(bind)
+        .await
+        .with_context(|| format!("binding {bind}"))?;
+    tracing::info!(addr = %listener.local_addr()?, "listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
+    tracing::info!("shut down");
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let term = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = term => {}
+    }
+}
+
+fn hash_password() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let password = input.trim_end_matches(['\n', '\r']);
+    if password.chars().count() < 10 {
+        bail!(
+            "password must be at least 10 characters (pipe it in, e.g. `printf '%s' 'pw' | feedback-harvest hash-password`)"
+        );
+    }
+    println!("{}", auth::hash_password(password)?);
+    Ok(())
+}
+
+fn healthcheck() -> Result<()> {
+    let bind = std::env::var("FH_BIND").unwrap_or_else(|_| "127.0.0.1:8080".into());
+    let port = bind.rsplit(':').next().unwrap_or("8080");
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    stream.write_all(b"GET /healthz HTTP/1.0\r\nHost: localhost\r\n\r\n")?;
+    let mut buf = [0u8; 64];
+    let n = stream.read(&mut buf)?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    if head.starts_with("HTTP/1.1 200") || head.starts_with("HTTP/1.0 200") {
+        Ok(())
+    } else {
+        bail!("unhealthy: {}", head.lines().next().unwrap_or_default())
+    }
+}
+
+fn solve(args: &[String]) -> Result<()> {
+    let [challenge, bits] = args else {
+        bail!("usage: feedback-harvest solve <challenge> <bits>");
+    };
+    let bits: u32 = bits.parse().context("bits must be a number")?;
+    if bits > 32 {
+        bail!("bits must be at most 32");
+    }
+    println!("{}", pow::solve(challenge, bits));
+    Ok(())
+}

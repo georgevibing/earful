@@ -47,7 +47,9 @@ pub struct PowConfig {
 pub enum EmbedConfig {
     Disabled,
     /// Built-in feature-hashing embedder. Offline and deterministic, lexical rather than truly semantic.
-    Hash { dim: usize },
+    Hash {
+        dim: usize,
+    },
     /// Any OpenAI-compatible `/embeddings` endpoint (OpenAI, Ollama, LM Studio, vLLM, ...).
     OpenAi {
         url: String,
@@ -134,7 +136,9 @@ impl Config {
                     None => env("FH_EMBED_API_KEY"),
                 },
             },
-            other => anyhow::bail!("unknown FH_EMBED_PROVIDER {other:?} (use none, hash or openai)"),
+            other => {
+                anyhow::bail!("unknown FH_EMBED_PROVIDER {other:?} (use none, hash or openai)")
+            }
         };
 
         Ok(Self {
@@ -147,12 +151,30 @@ impl Config {
             cookie_secure: parse_or("FH_COOKIE_SECURE", true)?,
             trusted_proxy_hops: parse_or("FH_TRUSTED_PROXY_HOPS", 0)?,
             limits: Limits {
-                per_ip_project_minute: parse_or("FH_LIMIT_IP_PROJECT_MINUTE", limits_default.per_ip_project_minute)?,
-                per_ip_project_hour: parse_or("FH_LIMIT_IP_PROJECT_HOUR", limits_default.per_ip_project_hour)?,
-                per_ip_project_day: parse_or("FH_LIMIT_IP_PROJECT_DAY", limits_default.per_ip_project_day)?,
-                per_ip_global_day: parse_or("FH_LIMIT_IP_GLOBAL_DAY", limits_default.per_ip_global_day)?,
-                per_project_hour: parse_or("FH_LIMIT_PROJECT_HOUR", limits_default.per_project_hour)?,
-                challenges_per_ip_hour: parse_or("FH_LIMIT_CHALLENGES_IP_HOUR", limits_default.challenges_per_ip_hour)?,
+                per_ip_project_minute: parse_or(
+                    "FH_LIMIT_IP_PROJECT_MINUTE",
+                    limits_default.per_ip_project_minute,
+                )?,
+                per_ip_project_hour: parse_or(
+                    "FH_LIMIT_IP_PROJECT_HOUR",
+                    limits_default.per_ip_project_hour,
+                )?,
+                per_ip_project_day: parse_or(
+                    "FH_LIMIT_IP_PROJECT_DAY",
+                    limits_default.per_ip_project_day,
+                )?,
+                per_ip_global_day: parse_or(
+                    "FH_LIMIT_IP_GLOBAL_DAY",
+                    limits_default.per_ip_global_day,
+                )?,
+                per_project_hour: parse_or(
+                    "FH_LIMIT_PROJECT_HOUR",
+                    limits_default.per_project_hour,
+                )?,
+                challenges_per_ip_hour: parse_or(
+                    "FH_LIMIT_CHALLENGES_IP_HOUR",
+                    limits_default.challenges_per_ip_hour,
+                )?,
                 logins_per_ip_window: limits_default.logins_per_ip_window,
                 login_window_secs: limits_default.login_window_secs,
                 min_fill_secs: parse_or("FH_MIN_FILL_SECS", limits_default.min_fill_secs)?,
@@ -161,7 +183,10 @@ impl Config {
             pow: PowConfig {
                 base_bits: parse_or("FH_POW_BITS", pow_default.base_bits)?,
                 max_bits: parse_or("FH_POW_MAX_BITS", pow_default.max_bits)?,
-                challenge_ttl_secs: parse_or("FH_CHALLENGE_TTL_SECS", pow_default.challenge_ttl_secs)?,
+                challenge_ttl_secs: parse_or(
+                    "FH_CHALLENGE_TTL_SECS",
+                    pow_default.challenge_ttl_secs,
+                )?,
             },
             embed,
         })

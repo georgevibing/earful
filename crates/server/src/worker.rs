@@ -68,7 +68,11 @@ pub async fn embed_pending(state: &AppState) -> Result<usize> {
                 let kind: String = r.get(2)?;
                 let title: String = r.get(3)?;
                 let body: String = r.get(4)?;
-                Ok((r.get(0)?, r.get(1)?, embed::feedback_text(&kind, &title, &body)))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    embed::feedback_text(&kind, &title, &body),
+                ))
             })?;
             Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
         })
@@ -161,10 +165,19 @@ pub async fn prune(state: &AppState) -> Result<()> {
     state
         .db
         .call(move |c| {
-            c.execute("DELETE FROM rate_events WHERE ts < ?1", params![ts - 2 * 86400])?;
-            c.execute("DELETE FROM used_challenges WHERE expires_at < ?1", params![ts])?;
+            c.execute(
+                "DELETE FROM rate_events WHERE ts < ?1",
+                params![ts - 2 * 86400],
+            )?;
+            c.execute(
+                "DELETE FROM used_challenges WHERE expires_at < ?1",
+                params![ts],
+            )?;
             c.execute("DELETE FROM sessions WHERE expires_at < ?1", params![ts])?;
-            c.execute("DELETE FROM block_events WHERE ts < ?1", params![ts - 90 * 86400])?;
+            c.execute(
+                "DELETE FROM block_events WHERE ts < ?1",
+                params![ts - 90 * 86400],
+            )?;
             Ok(())
         })
         .await

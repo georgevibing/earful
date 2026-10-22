@@ -25,8 +25,14 @@ impl Embedder {
     pub fn from_config(cfg: &EmbedConfig) -> Result<Self> {
         Ok(match cfg {
             EmbedConfig::Disabled => Self::Disabled,
-            EmbedConfig::Hash { dim } => Self::Hash { dim: (*dim).max(32) },
-            EmbedConfig::OpenAi { url, model, api_key } => Self::OpenAi {
+            EmbedConfig::Hash { dim } => Self::Hash {
+                dim: (*dim).max(32),
+            },
+            EmbedConfig::OpenAi {
+                url,
+                model,
+                api_key,
+            } => Self::OpenAi {
                 client: reqwest::Client::builder()
                     .timeout(Duration::from_secs(30))
                     .build()?,
@@ -80,11 +86,18 @@ impl Embedder {
                 let status = resp.status();
                 if !status.is_success() {
                     let body = resp.text().await.unwrap_or_default();
-                    bail!("embedding provider returned {status}: {}", truncate(&body, 300));
+                    bail!(
+                        "embedding provider returned {status}: {}",
+                        truncate(&body, 300)
+                    );
                 }
                 let mut parsed: Resp = resp.json().await.context("decoding embedding response")?;
                 if parsed.data.len() != texts.len() {
-                    bail!("embedding provider returned {} vectors for {} inputs", parsed.data.len(), texts.len());
+                    bail!(
+                        "embedding provider returned {} vectors for {} inputs",
+                        parsed.data.len(),
+                        texts.len()
+                    );
                 }
                 parsed.data.sort_by_key(|i| i.index);
                 Ok(parsed
@@ -110,17 +123,98 @@ fn truncate(s: &str, max: usize) -> &str {
 
 /// Small concept map so the offline embedder groups common bug and feedback vocabulary.
 const CONCEPTS: &[(&str, &[&str])] = &[
-    ("crash", &["crash", "freez", "froze", "hang", "stuck", "ctd", "segfault", "unresponsive", "lockup"]),
-    ("perf", &["lag", "stutter", "fps", "slow", "perform", "framerat", "laggy", "jank", "choppy"]),
-    ("audio", &["sound", "audio", "music", "volum", "sfx", "mute"]),
-    ("visual", &["graphic", "textur", "render", "glitch", "flicker", "shader", "visual"]),
-    ("input", &["control", "keyboard", "mous", "gamepad", "controller", "keybind", "input"]),
+    (
+        "crash",
+        &[
+            "crash",
+            "freez",
+            "froze",
+            "hang",
+            "stuck",
+            "ctd",
+            "segfault",
+            "unresponsive",
+            "lockup",
+        ],
+    ),
+    (
+        "perf",
+        &[
+            "lag", "stutter", "fps", "slow", "perform", "framerat", "laggy", "jank", "choppy",
+        ],
+    ),
+    (
+        "audio",
+        &["sound", "audio", "music", "volum", "sfx", "mute"],
+    ),
+    (
+        "visual",
+        &[
+            "graphic", "textur", "render", "glitch", "flicker", "shader", "visual",
+        ],
+    ),
+    (
+        "input",
+        &[
+            "control",
+            "keyboard",
+            "mous",
+            "gamepad",
+            "controller",
+            "keybind",
+            "input",
+        ],
+    ),
     ("save", &["save", "progress", "corrupt", "lost", "load"]),
-    ("network", &["server", "connect", "disconnect", "multiplayer", "ping", "netcod", "latenc", "timeout"]),
-    ("ui", &["menu", "button", "ui", "interfac", "font", "layout", "hud"]),
-    ("praise", &["love", "great", "awesom", "amazing", "fun", "enjoy", "fantastic", "brilliant"]),
-    ("request", &["pleas", "add", "wish", "would", "feature", "suggest", "could", "option"]),
-    ("difficulty", &["hard", "difficult", "easy", "balanc", "unfair", "overpow", "nerf", "buff"]),
+    (
+        "network",
+        &[
+            "server",
+            "connect",
+            "disconnect",
+            "multiplayer",
+            "ping",
+            "netcod",
+            "latenc",
+            "timeout",
+        ],
+    ),
+    (
+        "ui",
+        &["menu", "button", "ui", "interfac", "font", "layout", "hud"],
+    ),
+    (
+        "praise",
+        &[
+            "love",
+            "great",
+            "awesom",
+            "amazing",
+            "fun",
+            "enjoy",
+            "fantastic",
+            "brilliant",
+        ],
+    ),
+    (
+        "request",
+        &[
+            "pleas", "add", "wish", "would", "feature", "suggest", "could", "option",
+        ],
+    ),
+    (
+        "difficulty",
+        &[
+            "hard",
+            "difficult",
+            "easy",
+            "balanc",
+            "unfair",
+            "overpow",
+            "nerf",
+            "buff",
+        ],
+    ),
 ];
 
 fn stem(word: &str) -> &str {
@@ -166,7 +260,11 @@ pub fn hash_embed(text: &str, dim: usize) -> Vec<f32> {
         }
         let padded: Vec<char> = format!("^{s}$").chars().collect();
         for tri in padded.windows(3) {
-            add_feature(&mut v, &format!("t:{}", tri.iter().collect::<String>()), 0.25);
+            add_feature(
+                &mut v,
+                &format!("t:{}", tri.iter().collect::<String>()),
+                0.25,
+            );
         }
         for (concept, roots) in CONCEPTS {
             if roots.iter().any(|r| s.starts_with(r)) {
@@ -194,8 +292,10 @@ pub fn to_blob(v: &[f32]) -> Vec<u8> {
 }
 
 pub fn from_blob(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    b.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes(*c))
         .collect()
 }
 
@@ -219,7 +319,10 @@ impl VectorIndex {
     }
 
     pub fn remove_project(&self, project_id: i64) {
-        self.entries.write().unwrap().retain(|_, (p, _)| *p != project_id);
+        self.entries
+            .write()
+            .unwrap()
+            .retain(|_, (p, _)| *p != project_id);
     }
 
     pub fn clear(&self) {
@@ -235,16 +338,28 @@ impl VectorIndex {
     }
 
     pub fn get(&self, id: i64) -> Option<Vec<f32>> {
-        self.entries.read().unwrap().get(&id).map(|(_, v)| v.clone())
+        self.entries
+            .read()
+            .unwrap()
+            .get(&id)
+            .map(|(_, v)| v.clone())
     }
 
     /// Top `k` ids by cosine similarity, optionally restricted to a project.
-    pub fn search(&self, query: &[f32], project: Option<i64>, k: usize, exclude: Option<i64>) -> Vec<(i64, f32)> {
+    pub fn search(
+        &self,
+        query: &[f32],
+        project: Option<i64>,
+        k: usize,
+        exclude: Option<i64>,
+    ) -> Vec<(i64, f32)> {
         let entries = self.entries.read().unwrap();
         let mut scored: Vec<(i64, f32)> = entries
             .iter()
             .filter(|(id, (p, v))| {
-                project.is_none_or(|want| *p == want) && Some(**id) != exclude && v.len() == query.len()
+                project.is_none_or(|want| *p == want)
+                    && Some(**id) != exclude
+                    && v.len() == query.len()
             })
             .map(|(id, (_, v))| (*id, dot(query, v)))
             .collect();

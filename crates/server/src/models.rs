@@ -1,7 +1,9 @@
 use rusqlite::Row;
 use serde::Serialize;
 
-pub const PROJECT_TYPES: &[&str] = &["game", "webapp", "mobile", "desktop", "service", "library", "other"];
+pub const PROJECT_TYPES: &[&str] = &[
+    "game", "webapp", "mobile", "desktop", "service", "library", "other",
+];
 pub const KINDS: &[&str] = &["bug", "feedback"];
 pub const STATUSES: &[&str] = &["new", "triaged", "resolved", "archived", "spam"];
 
@@ -100,13 +102,20 @@ pub fn slugify(input: &str) -> String {
             out.push('-');
         }
     }
-    out.trim_end_matches('-').chars().take(63).collect::<String>().trim_end_matches('-').to_string()
+    out.trim_end_matches('-')
+        .chars()
+        .take(63)
+        .collect::<String>()
+        .trim_end_matches('-')
+        .to_string()
 }
 
 pub fn valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.len() <= 63
-        && slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && slug
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
 }

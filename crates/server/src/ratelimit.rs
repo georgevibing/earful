@@ -21,7 +21,9 @@ pub fn check(conn: &Connection, now: i64, rules: &[Rule]) -> rusqlite::Result<Re
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         if count >= rule.limit {
-            let retry = oldest.map(|o| o + rule.window_secs - now).unwrap_or(rule.window_secs);
+            let retry = oldest
+                .map(|o| o + rule.window_secs - now)
+                .unwrap_or(rule.window_secs);
             return Ok(Err(retry.max(1)));
         }
     }
@@ -36,7 +38,12 @@ pub fn record(conn: &Connection, bucket: &str, ip_hash: &str, now: i64) -> rusql
     Ok(())
 }
 
-pub fn count(conn: &Connection, bucket: &str, ip_hash: Option<&str>, since: i64) -> rusqlite::Result<u32> {
+pub fn count(
+    conn: &Connection,
+    bucket: &str,
+    ip_hash: Option<&str>,
+    since: i64,
+) -> rusqlite::Result<u32> {
     conn.query_row(
         "SELECT COUNT(*) FROM rate_events WHERE bucket = ?1 AND (?2 IS NULL OR ip_hash = ?2) AND ts > ?3",
         params![bucket, ip_hash, since],
@@ -44,7 +51,12 @@ pub fn count(conn: &Connection, bucket: &str, ip_hash: Option<&str>, since: i64)
     )
 }
 
-pub fn record_block(conn: &Connection, project_id: Option<i64>, reason: &str, now: i64) -> rusqlite::Result<()> {
+pub fn record_block(
+    conn: &Connection,
+    project_id: Option<i64>,
+    reason: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO block_events (project_id, reason, ts) VALUES (?1, ?2, ?3)",
         params![project_id, reason, now],
@@ -76,7 +88,10 @@ mod tests {
         record(&c, "b", "ip", 1010).unwrap();
         assert_eq!(check(&c, 1020, &rule).unwrap(), Err(40));
         // Other IPs are unaffected, and the window slides.
-        let other = [Rule { ip_hash: Some("other"), ..rule[0] }];
+        let other = [Rule {
+            ip_hash: Some("other"),
+            ..rule[0]
+        }];
         assert_eq!(check(&c, 1020, &other).unwrap(), Ok(()));
         assert_eq!(check(&c, 1061, &rule).unwrap(), Ok(()));
     }

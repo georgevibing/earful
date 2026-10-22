@@ -29,7 +29,8 @@ least `bits` leading zero bits. Shared test vector (keep Rust and TS tests in sy
 
 ### `POST /api/v1/feedback`
 
-Body limit 32 KB.
+Body limit 32 KB (larger bodies get `413`). The body is parsed as JSON regardless of
+`Content-Type`, so `text/plain` posts (no CORS preflight) and `navigator.sendBeacon` work.
 
 ```json
 {
@@ -42,7 +43,7 @@ Body limit 32 KB.
   "meta": { "version": "1.2.3" }, // optional JSON object, <= 4096 bytes serialized
   "source": "web" | "api",         // optional, default "api"
   "challenge": "<from /challenge>",
-  "nonce": "12345",
+  "nonce": "12345",               // decimal string (a JSON number is accepted too)
   "website": ""                    // honeypot: must be empty or absent
 }
 ```
@@ -50,7 +51,8 @@ Body limit 32 KB.
 Success is always `202 {"ok": true}`, whether the item was stored, merged into an
 exact duplicate, quarantined or silently dropped. Spammers learn nothing.
 
-Errors (legit clients need these): `400 invalid_<field>` validation,
+Errors (legit clients need these): `400 invalid_json`, `400 invalid_<field>` validation
+(`invalid_kind|invalid_body|invalid_title|invalid_contact|invalid_rating|invalid_meta|invalid_source`),
 `400 challenge_malformed|challenge_invalid|challenge_wrong_project|challenge_expired|challenge_used|pow_insufficient`,
 `404 not_found`, `403 project_paused`, `429 rate_limited`.
 
@@ -80,7 +82,7 @@ Every non-GET admin request with an `Origin` header must match `Host`, else
 
 ### Auth
 
-- `POST /api/admin/login` `{ "password": "..." }` gives `204` + cookie, `401 invalid_credentials`, `429 rate_limited` (5 per 15 min per IP).
+- `POST /api/admin/login` `{ "password": "..." }` gives `204` + cookie, `401 invalid_credentials`, `429 rate_limited` (5 failed attempts per 15 min per IP, 30 failed per hour globally; successful logins are not counted).
 - `POST /api/admin/logout` gives `204`, clears cookie.
 - `GET /api/admin/me` gives `200 {"ok": true}` or `401`.
 
@@ -99,12 +101,12 @@ Project object:
 `stats` is present on list and get. `open` = `new` + `triaged`; `total` excludes spam.
 
 - `GET /api/admin/projects` gives `200 [Project]` ordered by title.
-- `POST /api/admin/projects` `{ title, slug?, project_type?, description?, accepting? }` gives `201 Project`. Slug is derived from title when omitted. `400 invalid_slug|invalid_title|invalid_project_type`, `409 conflict` on duplicate slug.
+- `POST /api/admin/projects` `{ title, slug?, project_type?, description?, accepting? }` gives `201 Project`. Slug is derived from title when omitted. `400 invalid_slug|invalid_title|invalid_project_type|invalid_description` (title max 120, description max 2000 chars), `409 conflict` on duplicate slug.
 - `GET /api/admin/projects/:id` gives `200 Project`.
 - `PATCH /api/admin/projects/:id` with any subset of the create fields gives `200 Project`.
 - `DELETE /api/admin/projects/:id` gives `204` (cascades feedback and vectors).
 - `POST /api/admin/projects/:id/rotate-key` gives `200 Project` with a new `ingest_key`.
-- `GET /api/admin/projects/:id/export?format=json|csv` gives a download (`Content-Disposition: attachment`).
+- `GET /api/admin/projects/:id/export?format=json|csv` gives a download (`Content-Disposition: attachment; filename="<slug>-feedback.<ext>"`), all statuses, oldest first. CSV cells starting with `= + - @` are prefixed with `'` to prevent formula injection. `400 invalid_format`.
 
 ### Feedback
 
@@ -126,11 +128,11 @@ Feedback object:
   - `q` search text, `mode`: `hybrid` (default) | `fuzzy` | `keyword` | `semantic`
   - `from`, `to` (Unix seconds, inclusive), `limit` (default 50, max 200), `offset`
   - Without `q`: newest first. With `q`: relevance order.
-  - Response: `{ "items": [Feedback], "total": 123, "mode": "hybrid", "semantic": true }` where `semantic` says whether vectors were used.
+  - Response: `{ "items": [Feedback], "total": 123, "mode": "hybrid", "semantic": true }` where `mode` is the mode actually used (`semantic` falls back to `hybrid` when vectors are unavailable) and `semantic` says whether vectors were used. Invalid params give `400 invalid_query`.
 - `GET /api/admin/feedback/:id` gives `{ "item": Feedback, "similar": [Feedback with score] }` (top 5 nearest neighbours in the same project).
-- `PATCH /api/admin/feedback/:id` `{ status?, admin_note?, kind? }` gives `200 Feedback`.
+- `PATCH /api/admin/feedback/:id` `{ status?, admin_note?, kind? }` gives `200 Feedback`, `400 invalid_status|invalid_kind|invalid_admin_note`. Moving an item out of `spam` clears `spam_reason`.
 - `DELETE /api/admin/feedback/:id` gives `204`.
-- `POST /api/admin/feedback/bulk` `{ "ids": [1,2], "action": "set_status", "status": "archived" }` or `{ "ids": [...], "action": "delete" }` gives `200 {"affected": 2}`. Max 500 ids.
+- `POST /api/admin/feedback/bulk` `{ "ids": [1,2], "action": "set_status", "status": "archived" }` or `{ "ids": [...], "action": "delete" }` gives `200 {"affected": 2}`. Max 500 ids. `400 invalid_ids|invalid_action|invalid_status`.
 
 ### Stats
 
@@ -140,7 +142,7 @@ Feedback object:
 {
   "totals": { "total": 0, "open": 0, "new": 0, "bugs": 0, "feedback": 0, "spam": 0, "last_7d": 0 },
   "daily": [ { "day": "2026-10-01", "bug": 0, "feedback": 0 } ],   // last 30 days, oldest first, zero filled
-  "blocked": { "rate_limited": 0, "honeypot": 0, "pow_insufficient": 0, "duplicate": 0, "spam_score": 0, "too_fast": 0, "near_duplicate": 0 },  // last 30 days
+  "blocked": { "rate_limited": 0, "honeypot": 0, "pow_insufficient": 0, "duplicate": 0, "spam_score": 0, "too_fast": 0, "near_duplicate": 0 },  // last 30 days; these keys are always present, other seen reason codes (e.g. challenge_used, challenge_expired, challenge_invalid) are added
   "embeddings": { "enabled": true, "model": "hash-v1-384", "embedded": 0, "pending": 0 }
 }
 ```
@@ -148,3 +150,22 @@ Feedback object:
 ### Maintenance
 
 - `POST /api/admin/reindex` drops all vectors and re-embeds everything in the background. `202 {"ok": true}`.
+
+### API tokens (for MCP and scripts)
+
+Admin-issued bearer tokens. Only `sha256(token)` is stored; the raw token is shown once.
+`scope` is `read` (list/get/search/stats/export) or `write` (everything, including deletes).
+
+Token object: `{ "id": 1, "name": "claude-code laptop", "scope": "write", "prefix": "fht_ab12", "created_at": 0, "last_used_at": null }`
+
+- `GET /api/admin/tokens` gives `200 [Token]` newest first.
+- `POST /api/admin/tokens` `{ "name": "...", "scope": "read" | "write" }` gives `201 { "token": "fht_<64 hex>", ...Token }`. `400 invalid_name|invalid_scope`.
+- `DELETE /api/admin/tokens/:id` gives `204` (revokes immediately).
+
+## MCP (`/mcp`)
+
+Model Context Protocol server, Streamable HTTP transport (JSON responses, no SSE),
+`Authorization: Bearer fht_...` required (`401` otherwise, `403` for write tools with a
+read token). `GET /mcp` gives `405`. Tools mirror the admin API (projects, feedback,
+search, stats, export, tokens excluded). See `docs/mcp.md` for the tool list and
+client setup.

@@ -118,7 +118,8 @@ CREATE INDEX block_events_ts ON block_events (ts);
 "#];
 
 pub fn open(path: &Path) -> Result<Connection> {
-    let conn = Connection::open(path).with_context(|| format!("opening database {}", path.display()))?;
+    let conn =
+        Connection::open(path).with_context(|| format!("opening database {}", path.display()))?;
     configure(&conn)?;
     Ok(conn)
 }
@@ -147,7 +148,11 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 /// Returns the server secret used for HMACs, creating it on first boot.
 pub fn server_secret(conn: &Connection) -> Result<Vec<u8>> {
     let existing: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = 'server_secret'", [], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'server_secret'",
+            [],
+            |r| r.get(0),
+        )
         .optional()?;
     if let Some(hex_secret) = existing {
         return Ok(hex::decode(hex_secret)?);

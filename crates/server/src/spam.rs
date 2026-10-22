@@ -45,7 +45,15 @@ const SPAM_PHRASES: &[&str] = &[
     "guaranteed profit",
 ];
 
-const SHORTENERS: &[&str] = &["bit.ly", "tinyurl.com", "t.co/", "goo.gl", "is.gd", "cutt.ly", "rb.gy"];
+const SHORTENERS: &[&str] = &[
+    "bit.ly",
+    "tinyurl.com",
+    "t.co/",
+    "goo.gl",
+    "is.gd",
+    "cutt.ly",
+    "rb.gy",
+];
 
 /// Returns a score (0 is clean, >= threshold is quarantined) and the triggered signals.
 pub fn score(title: &str, body: &str) -> (f32, Vec<&'static str>) {
@@ -156,7 +164,8 @@ pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>, trusted_hops: us
             return normalize_ip(ip);
         }
     }
-    peer.map(|p| normalize_ip(p.ip())).unwrap_or_else(|| "unknown".into())
+    peer.map(|p| normalize_ip(p.ip()))
+        .unwrap_or_else(|| "unknown".into())
 }
 
 /// IPv6 clients usually own a whole /64, so rate limit at that granularity.
@@ -199,7 +208,11 @@ mod tests {
 
     #[test]
     fn detects_shouting_runs_and_repetition() {
-        assert!(score("", "THIS GAME IS TERRIBLE AND YOU SHOULD FEEL BAD").1.contains(&"shouting"));
+        assert!(
+            score("", "THIS GAME IS TERRIBLE AND YOU SHOULD FEEL BAD")
+                .1
+                .contains(&"shouting")
+        );
         assert!(score("", "nooooooooooooooooo").1.contains(&"char_run"));
         let repeated = "spam ".repeat(40);
         assert!(score("", &repeated).1.contains(&"repetitive"));

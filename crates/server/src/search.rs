@@ -32,12 +32,18 @@ pub fn keyword(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> 
     if terms.is_empty() {
         return Ok(vec![]);
     }
-    let fts = terms.iter().map(|t| format!("\"{t}\"*")).collect::<Vec<_>>().join(" OR ");
+    let fts = terms
+        .iter()
+        .map(|t| format!("\"{t}\"*"))
+        .collect::<Vec<_>>()
+        .join(" OR ");
     let mut stmt = conn.prepare(
         "SELECT rowid, bm25(feedback_fts, 3.0, 1.0, 0.5) AS r FROM feedback_fts
          WHERE feedback_fts MATCH ?1 ORDER BY r LIMIT ?2",
     )?;
-    let rows = stmt.query_map(params![fts, CANDIDATES as i64], |r| Ok((r.get(0)?, -r.get::<_, f64>(1)?)))?;
+    let rows = stmt.query_map(params![fts, CANDIDATES as i64], |r| {
+        Ok((r.get(0)?, -r.get::<_, f64>(1)?))
+    })?;
     rows.collect()
 }
 
@@ -52,7 +58,10 @@ pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
         .iter()
         .flat_map(|t| {
             let chars: Vec<char> = t.chars().collect();
-            chars.windows(3).map(|w| w.iter().collect::<String>()).collect::<Vec<_>>()
+            chars
+                .windows(3)
+                .map(|w| w.iter().collect::<String>())
+                .collect::<Vec<_>>()
         })
         .collect();
     trigrams.sort();
@@ -65,16 +74,24 @@ pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
             "SELECT id, title, body FROM feedback WHERE title LIKE ?1 OR body LIKE ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        stmt.query_map(params![pattern, CANDIDATES as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<rusqlite::Result<_>>()?
+        stmt.query_map(params![pattern, CANDIDATES as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
     } else {
-        let fts = trigrams.iter().map(|t| format!("\"{t}\"")).collect::<Vec<_>>().join(" OR ");
+        let fts = trigrams
+            .iter()
+            .map(|t| format!("\"{t}\""))
+            .collect::<Vec<_>>()
+            .join(" OR ");
         let mut stmt = conn.prepare(
             "SELECT f.id, f.title, f.body FROM feedback_tri t JOIN feedback f ON f.id = t.rowid
              WHERE feedback_tri MATCH ?1 ORDER BY t.rank LIMIT ?2",
         )?;
-        stmt.query_map(params![fts, CANDIDATES as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<rusqlite::Result<_>>()?
+        stmt.query_map(params![fts, CANDIDATES as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
     };
 
     let phrase = terms.join(" ");
@@ -83,11 +100,15 @@ pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
         .filter_map(|(id, title, body)| {
             let title_l = title.to_lowercase();
             let body_l = body.to_lowercase();
-            let doc_words: std::collections::HashSet<String> =
-                words_unbounded(&title_l).chain(words_unbounded(&body_l)).collect();
+            let doc_words: std::collections::HashSet<String> = words_unbounded(&title_l)
+                .chain(words_unbounded(&body_l))
+                .collect();
             let mut total = 0.0;
             for term in &terms {
-                let best = doc_words.iter().map(|w| word_similarity(term, w)).fold(0.0, f64::max);
+                let best = doc_words
+                    .iter()
+                    .map(|w| word_similarity(term, w))
+                    .fold(0.0, f64::max);
                 total += best;
             }
             let mut score = total / terms.len() as f64;
@@ -144,13 +165,15 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
     for (i, row) in d.iter_mut().enumerate() {
         row[0] = i;
     }
-    for j in 0..=m {
-        d[0][j] = j;
+    for (j, cell) in d[0].iter_mut().enumerate() {
+        *cell = j;
     }
     for i in 1..=n {
         for j in 1..=m {
             let cost = usize::from(a[i - 1] != b[j - 1]);
-            d[i][j] = (d[i - 1][j] + 1).min(d[i][j - 1] + 1).min(d[i - 1][j - 1] + cost);
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
             if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
                 d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
             }

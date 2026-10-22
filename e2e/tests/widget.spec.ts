@@ -26,6 +26,7 @@ test('floating widget works cross origin on a third party site', async ({ page, 
   await page.getByLabel('Description').fill('The checkout button does nothing on Safari.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText('Thanks! Your feedback was sent.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
 
   const list = await request.get(`/api/admin/feedback?project_id=${project.id}&status=any`);
   const body = await list.json();

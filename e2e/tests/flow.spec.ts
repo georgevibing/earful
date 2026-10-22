@@ -20,12 +20,15 @@ test('create a project, submit via hosted page, find it with fuzzy search, triag
   const player = await page.context().newPage();
   await player.goto(`/s/${slug}`);
   await expect(player.getByRole('heading', { name: `Feedback for ${title}` })).toBeVisible();
+  // Only one of form and success view may be visible at a time.
+  await expect(player.getByText('Thanks! Your feedback was sent.')).toBeHidden();
   await player.getByRole('radio', { name: 'Bug report' }).click();
   await player.getByLabel('Title').fill('Inventory crash on boss fight');
   await player.getByLabel('Description').fill('Opening the inventory during the dragon boss fight crashes the game to desktop.');
   await player.getByLabel('Contact').fill('player@example.com');
   await player.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(player.getByText('Thanks! Your feedback was sent.')).toBeVisible();
+  await expect(player.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
 
   // And a feature request.
   await player.getByRole('button', { name: 'Send another' }).click();

@@ -15,6 +15,7 @@
     "test:rust": "cargo test --workspace",
     "test:e2e": "pnpm build:web && cargo build && pnpm --filter @feedback-harvest/e2e test",
     "lint:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
-    "check": "pnpm typecheck && pnpm lint:rust && pnpm test:rust && pnpm test:web && pnpm test:e2e"
+    "check": "pnpm typecheck && pnpm lint:rust && pnpm test:rust && pnpm test:web && pnpm test:e2e",
+    "screenshots": "pnpm build:web && cargo build && node scripts/screenshots.mjs"
   }
 }

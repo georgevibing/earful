@@ -68,6 +68,8 @@ textarea.fh-input { min-height: 110px; resize: vertical; }
 .fh-stars { display: inline-flex; gap: 2px; }
 .fh-star { font-size: 22px; line-height: 1; background: none; border: 0; padding: 2px; cursor: pointer; color: var(--fh-border); border-radius: 4px; }
 .fh-star.fh-on { color: #f59f00; }
+/* Class display rules would otherwise beat the [hidden] attribute. */
+[hidden] { display: none !important; }
 .fh-rating[hidden] { display: none; }
 fieldset.fh-rating { border: 0; margin: 0; padding: 0; min-width: 0; }
 fieldset.fh-rating legend { padding: 0; margin-bottom: 4px; }

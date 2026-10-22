@@ -1,107 +1,288 @@
+<div align="center">
+
 # feedback-harvest
 
-A tiny self-hosted service for collecting bug reports and feedback from anything you ship: a Steam game, a web app, a CLI, a backend service. Users submit anonymously (no accounts), layered anti-spam keeps the inbox clean, and a small password-protected admin UI lets the single admin manage projects and dig through submissions with fuzzy, keyword, semantic and hybrid search. It is one Rust binary plus one SQLite file, built for a Coolify box, not for SaaS.
+**Bug reports and feedback from anything you ship, in one tiny self-hosted binary.**
+
+[![CI](https://github.com/georgevibing/feedback-harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/georgevibing/feedback-harvest/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable%20%C2%B7%202024%20edition-orange.svg?logo=rust)](https://www.rust-lang.org)
+[![Single binary](https://img.shields.io/badge/deploy-single%20binary%20%2B%20SQLite-success.svg)](#quickstart)
+[![MCP](https://img.shields.io/badge/MCP-18%20tools-8A2BE2.svg)](docs/mcp.md)
+
+[Quickstart](#quickstart) ·
+[Integrate](#integrate-a-product) ·
+[Anti-spam](#how-anti-spam-works) ·
+[Search](#search) ·
+[MCP](#agents-via-mcp) ·
+[Deploy](#deploy-on-coolify) ·
+[Docs](docs/)
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/inbox-dark.png">
+  <img alt="The feedback inbox: a hybrid search for 'game crash' with highlighted hits and the detail panel showing metadata and similar reports" src="docs/assets/inbox-light.png" width="100%">
+</picture>
+
+</div>
+
+## Why
+
+You launched a Steam game, a web app or a CLI and want to hear from the people using it. You do not want accounts, a SaaS subscription or a spam-filled inbox. You want a form your players can use without signing in, an inbox you can actually search, and something you can deploy in a minute and forget about.
+
+feedback-harvest is that: one Rust binary and one SQLite file. Users submit anonymously through a hosted page, an embeddable widget or a plain HTTP API. Layered anti-spam keeps scripts out without CAPTCHAs. A small admin UI (only you can log in) lets you manage projects and dig through submissions with fuzzy, keyword, semantic and hybrid search. Your coding agent gets the same powers through a built-in MCP server.
+
+It is built for one person running a handful of projects on a Coolify box, not as a SaaS.
 
 ## Features
 
-| Requirement | What you get |
-| --- | --- |
-| Project CRUD | Create, edit, pause and delete projects (title, slug, type, description). Each project has a public, rotatable ingest key. |
-| Anonymous submission | `POST /api/v1/feedback` for bugs and feedback with optional title, contact, 1 to 5 rating and free-form `meta` JSON (version, platform, build). |
-| Hosted form and widget | `/s/<slug>` hosted feedback page and an embeddable `/widget.js` for web products. |
-| Layered anti-spam | Per-project keys, sliding window rate limits, adaptive proof of work, single-use signed challenges, honeypot, minimum fill time, exact duplicate merging, heuristic spam scoring, near duplicate detection. Suspicious items are quarantined, not rejected. |
-| Search | Fuzzy find (trigram + typo tolerant edit distance), keyword (FTS5 BM25 with stemming), semantic (embeddings) and hybrid (reciprocal rank fusion of all three). "Similar items" on every detail view. |
-| Triage | Statuses `new, triaged, resolved, archived, spam`, admin notes, bulk actions. |
-| Dashboard | Per-project counts, 30 day activity, blocked spam by reason, embedding status. |
-| Export | JSON or CSV per project. |
-| MCP server for agents | Built-in `/mcp` endpoint (Streamable HTTP) with 18 tools, resources and prompts so Claude Code, Cursor, VS Code or any MCP client can manage projects, triage, search and import feedback. Scoped, revocable, hashed API tokens. |
-| Small footprint | Single static-ish binary with the admin UI embedded, SQLite in WAL mode, no other services required. |
+**Collect**
+- Projects with title, slug, type (`game`, `webapp`, `mobile`, `desktop`, `service`, `library`, `other`) and description, each with a public, rotatable ingest key. Pause intake per project.
+- Bug reports and feedback with optional title, contact, 1 to 5 rating and free-form `meta` JSON (version, platform, build, GPU, whatever helps).
+- Three ways in: a hosted page at `/s/<slug>`, an embeddable `widget.js` (floating button or inline form, Shadow DOM, light and dark, about 9 KB gzipped), or the HTTP API from any language.
 
-## Architecture
+**Stop spam**
+- No accounts and no CAPTCHA, but nine layers: per-project keys, sliding window rate limits, adaptive proof of work, single-use signed challenges, a honeypot, a minimum fill time, exact duplicate merging, heuristic scoring and near duplicate detection.
+- Soft signals quarantine instead of reject, and the API answers `202` for every silent outcome, so spammers learn nothing and you lose nothing.
 
-```
-  game / app / site                      you (single admin)
-        |                                      |
-        | GET  /api/v1/challenge               | /admin  (session cookie)
-        | POST /api/v1/feedback                | /api/admin/*
-        v                                      v
- +----------------------------------------------------------+
- |              feedback-harvest (one Rust binary)          |
- |                                                          |
- |  axum HTTP  ->  anti-spam pipeline  ->  SQLite (WAL)     |
- |                                         |- feedback      |
- |  embedded admin UI + widget.js          |- FTS5 porter   |
- |                                         |- FTS5 trigram  |
- |  background worker  --embeds-->         '- embeddings    |
- |        |                     in-memory vector index      |
- +--------|-------------------------------------------------+
-          v (optional)
-   OpenAI compatible /embeddings  (OpenAI, Ollama, LM Studio, ...)
-```
+**Find anything**
+- Fuzzy find that survives typos (`invetnory crsh` finds "Inventory crash"), stemmed keyword search with BM25, semantic search over embeddings, and a hybrid mode that fuses all three.
+- "Similar" reports on every item for spotting duplicates. Filters, status tabs, bulk actions, keyboard shortcuts, admin notes, CSV and JSON export.
+- A dashboard with 30 day activity, blocked spam by reason and per-project counts.
 
-Details in [docs/architecture.md](docs/architecture.md). The HTTP contract lives in [docs/api.md](docs/api.md).
+**Agents via MCP**
+- A built-in [Model Context Protocol](https://modelcontextprotocol.io) endpoint with 18 tools, resources and prompts. Claude Code, Cursor, VS Code or any MCP client can triage the inbox, search by meaning, import reports from Discord and draft release notes.
+- Scoped (`read` or `write`), hashed, revocable API tokens managed from the admin UI.
 
-## Repository layout
+**Ship it tiny**
+- One binary of about 8 MB with the admin UI and widget embedded, about 10 MB of RAM when idle, SQLite in WAL mode, no other services (measured on a macOS arm64 release build). A distroless Docker image for Coolify or any container host.
+- Embeddings work offline out of the box, or point at OpenAI, Ollama or any OpenAI compatible server for real semantic search.
 
-```
-crates/server/      Rust server (axum, rusqlite, argon2). Binary: feedback-harvest
-apps/admin/         Admin UI (Vite), built to dist/ and embedded into the binary at /admin/
-packages/widget/    Browser client + embeddable widget (widget.js), PoW solver in TypeScript
-e2e/                Playwright end to end tests against the real binary
-docs/               API contract, architecture, deployment, integrations
-```
+## Screenshots
 
-pnpm workspace for the TypeScript packages, Cargo workspace for Rust.
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
+        <img alt="Dashboard with totals, a 30 day bug vs feedback chart, blocked spam by reason and per project counts" src="docs/assets/dashboard-light.png">
+      </picture>
+      <p align="center"><b>Dashboard</b>: activity, blocked spam, embedding status</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/project-dark.png">
+        <img alt="Project page with the ingest key and copy-paste integration snippets" src="docs/assets/project-light.png">
+      </picture>
+      <p align="center"><b>Project</b>: ingest key and ready to paste snippets</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hosted-dark.png">
+        <img alt="Hosted feedback page for a game, with bug report and feedback modes" src="docs/assets/hosted-light.png">
+      </picture>
+      <p align="center"><b>Hosted page</b>: <code>/s/&lt;slug&gt;</code>, no code needed</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/widget-dark.png">
+        <img alt="The floating feedback widget open on a third party web app" src="docs/assets/widget-light.png">
+      </picture>
+      <p align="center"><b>Widget</b>: one script tag on any site</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tokens-dark.png">
+        <img alt="API tokens screen with read and write tokens and MCP client setup snippets" src="docs/assets/tokens-light.png">
+      </picture>
+      <p align="center"><b>API tokens</b>: connect an MCP client in one line</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/inbox-dark.png">
+        <img alt="Inbox with search results and the detail panel" src="docs/assets/inbox-light.png">
+      </picture>
+      <p align="center"><b>Inbox</b>: search, triage, similar reports</p>
+    </td>
+  </tr>
+</table>
+
+Screenshots follow your GitHub theme. They are generated from seeded demo data by [`scripts/screenshots.mjs`](scripts/screenshots.mjs).
 
 ## Quickstart
-
-Prerequisites: Rust (stable, via rustup), Node 22+ and pnpm (`corepack enable`).
-
-```sh
-pnpm install
-
-# 1. Create an admin password hash (reads the password from stdin)
-printf '%s' 'choose-a-long-password' | cargo run -q -p feedback-harvest -- hash-password
-```
-
-### Local development (two terminals)
-
-```sh
-# Terminal 1: API server on http://127.0.0.1:8080
-export FH_ADMIN_PASSWORD_HASH='<hash from step 1>'   # single quotes: the hash contains $
-export FH_COOKIE_SECURE=false                         # plain http on localhost only
-pnpm dev:server
-
-# Terminal 2: admin UI with hot reload, proxies /api to the server
-pnpm dev:admin
-```
-
-Open http://127.0.0.1:5173/admin/ and log in. To try the embedded build instead, run `pnpm build:web` and open http://127.0.0.1:8080/admin/ (debug builds read the web assets from disk, release builds embed them).
 
 ### Docker Compose
 
 ```sh
 cp .env.example .env
-# put the hash into .env inside single quotes: FH_ADMIN_PASSWORD_HASH='$argon2id$v=19$...'
+printf '%s' 'choose-a-long-password' | docker run --rm -i $(docker build -q .) hash-password
+# paste the hash into .env in single quotes: FH_ADMIN_PASSWORD_HASH='$argon2id$v=19$...'
 docker compose up -d --build
-open http://127.0.0.1:8080/admin/
 ```
 
-The compose file publishes only on `127.0.0.1`. To reach it from another machine, use an SSH tunnel (`ssh -L 8080:127.0.0.1:8080 host`) or deploy behind Coolify, see [docs/deploy-coolify.md](docs/deploy-coolify.md).
+Open http://127.0.0.1:8080/admin/ and sign in. The compose file publishes on `127.0.0.1` only; reach it from another machine with `ssh -L 8080:127.0.0.1:8080 your-server`, or deploy behind an HTTPS proxy ([Coolify guide](docs/deploy-coolify.md)).
 
-## Configuration
+### From source
 
-All settings are environment variables. See [.env.example](.env.example) for a commented template.
+Prerequisites: Rust stable (rustup), Node 22+ and pnpm (`corepack enable`).
+
+```sh
+pnpm install
+pnpm build:web                       # widget + admin UI, embedded into the binary
+cargo build --release
+
+export FH_ADMIN_PASSWORD_HASH="$(printf '%s' 'choose-a-long-password' | ./target/release/feedback-harvest hash-password)"
+export FH_COOKIE_SECURE=false        # plain http on localhost only
+./target/release/feedback-harvest serve
+```
+
+The server listens on `127.0.0.1:8080` by default. Without `FH_ADMIN_PASSWORD_HASH` every login fails, by design.
+
+## Integrate a product
+
+Create a project in the admin UI and copy its ingest key. The key ships inside your game or page, so it is public by design; rotate it whenever you like. The project page shows every snippet below, prefilled.
+
+**Hosted page.** Link to `https://<your-host>/s/<slug>` from your game menu, store page or Discord. No code.
+
+**Widget.** One script tag adds a floating feedback button to any site:
+
+```html
+<script src="https://<your-host>/widget.js" data-fh-key="fhk_..." defer></script>
+```
+
+Or render the form inline in an element you control:
+
+```html
+<div data-fh-inline data-fh-key="fhk_..."></div>
+<script src="https://<your-host>/widget.js" defer></script>
+```
+
+There is also an ESM client for bundlers. See [packages/widget/README.md](packages/widget/README.md).
+
+**Any client.** Fetch a challenge, solve a small proof of work, submit:
+
+```sh
+BASE=https://<your-host> KEY=fhk_...
+CH=$(curl -s "$BASE/api/v1/challenge?key=$KEY")
+TOKEN=$(echo "$CH" | jq -r .challenge) BITS=$(echo "$CH" | jq -r .bits)
+NONCE=$(feedback-harvest solve "$TOKEN" "$BITS")
+curl -s "$BASE/api/v1/feedback" -H 'Content-Type: application/json' -d @- <<EOF
+{"key":"$KEY","kind":"bug","title":"Crash on launch","body":"Black screen, then crash to desktop.",
+ "meta":{"version":"1.2.3","platform":"windows"},"challenge":"$TOKEN","nonce":"$NONCE"}
+EOF
+```
+
+[docs/integrations.md](docs/integrations.md) has complete examples for Unity (C#), Godot 4 (GDScript), C++ and Python, plus advice for games (fetch the challenge when the dialog opens, put build info in `meta`). The full HTTP contract is [docs/api.md](docs/api.md).
+
+## How anti-spam works
+
+Every submission runs through a fixed pipeline. Hard failures that a legitimate client needs to know about return an error; everything else answers `202 {"ok": true}`.
+
+| Layer | What it does | On failure |
+| --- | --- | --- |
+| Ingest key | Scopes every request to one project; rotatable, pausable | `404` / `403` |
+| Honeypot | Hidden `website` field that only bots fill in | Silently dropped |
+| Validation | Length caps, UTF-8, control characters stripped, `meta` at most 4 KB | `400` |
+| Rate limits | Sliding windows per IP and project (minute, hour, day), per IP globally, per project globally | `429` + `Retry-After` |
+| Proof of work | SHA-256 puzzle, about 0.2 s in a browser at the default 18 bits, harder for repeat senders and under load | `400` |
+| Single-use challenge | HMAC-signed, project-bound, expires after 30 minutes, redeemable once | `400` |
+| Minimum fill time | Submitted less than 2 s after the challenge was issued | Quarantined |
+| Exact duplicate | Same text within 24 h: dropped from the same IP, merged (`+1`) from another | Dropped or merged |
+| Heuristics | Links, shorteners, link markup, spam phrases, shouting, character runs, repetition | Quarantined |
+| Near duplicate | Paraphrased repeats from one IP (embedding similarity of at least 0.95) | Quarantined |
+
+Raw IP addresses are never stored, only keyed HMAC pseudonyms (IPv6 at /64 granularity). Quarantined items wait in the **Spam** tab, one click from being restored. The reasoning behind each layer is in [docs/architecture.md](docs/architecture.md).
+
+## Search
+
+| Mode | How | Best for |
+| --- | --- | --- |
+| `hybrid` (default) | Reciprocal rank fusion (k = 60) of the three below | Everyday searching |
+| `fuzzy` | FTS5 trigram candidates, scored by typo-tolerant edit distance and prefix matching | Half-remembered words, typos |
+| `keyword` | FTS5 with Porter stemming, BM25 ranked (title weighted higher) | Error strings, exact terms |
+| `semantic` | Cosine similarity over embeddings, brute force in memory | "game freezes" finding "stuck on the loading screen" |
+
+Embeddings are computed in the background, so submissions never wait on them. Pick a provider:
+
+- **`hash`** (default): offline, deterministic, free. Feature hashing over stemmed words, bigrams and character trigrams, plus a small concept map for common game and app vocabulary (crash, freeze, stuck; lag, stutter, fps). Lexical with a little help, not real understanding.
+- **`openai`** pointed at OpenAI (`text-embedding-3-small`), or at a self-hosted [Ollama](https://ollama.com) with `nomic-embed-text` for real semantic search without third parties. LM Studio, vLLM and llama.cpp server work the same way.
+
+Vectors are tagged with their model, so switching providers re-embeds in the background. If the provider is down, submissions still land and keyword and fuzzy search keep working.
+
+## Agents via MCP
+
+The binary serves an MCP endpoint at `/mcp` (Streamable HTTP). Create a token under **API tokens**, then:
+
+```sh
+claude mcp add --transport http feedback-harvest https://<your-host>/mcp \
+  --header "Authorization: Bearer fht_..."
+```
+
+Ask "triage the new feedback for starfall", or run the `triage_inbox` prompt.
+
+| | |
+| --- | --- |
+| Read tools (9) | `list_projects`, `get_project`, `list_feedback`, `search_feedback`, `get_feedback`, `find_similar_feedback`, `get_stats`, `export_feedback`, `get_integration_snippets` |
+| Write tools (9) | `create_project`, `update_project`, `rotate_project_key`, `delete_project`, `create_feedback`, `update_feedback`, `bulk_update_feedback`, `delete_feedback`, `reindex_embeddings` |
+| Resources | `feedback-harvest://projects`, `.../projects/{slug}`, `.../feedback/{id}` |
+| Prompts | `triage_inbox`, `summarize_feedback`, `release_notes_from_resolved` |
+
+Read tokens never see write tools. Destructive tools require explicit confirmation arguments. Clients that only speak stdio (Claude Desktop, for example) can use the built-in `feedback-harvest mcp-stdio` bridge. Setup for every client, the full tool reference and example workflows are in [docs/mcp.md](docs/mcp.md).
+
+## Deploy on Coolify
+
+1. Create an application from this repository with the **Dockerfile** build pack.
+2. Set **Ports Exposes** to `8080` and do not map host ports.
+3. Add persistent storage mounted at `/data`.
+4. Set `FH_ADMIN_PASSWORD_HASH`, and optionally the embedding variables.
+5. Attach a domain. Coolify's proxy terminates HTTPS.
+
+The image binds `0.0.0.0:8080` inside the container, runs as a non-root user on distroless, trusts one proxy hop for client IPs, and ships a `HEALTHCHECK`. Step by step instructions, Cloudflare notes, an optional Ollama service, backups and upgrades are in [docs/deploy-coolify.md](docs/deploy-coolify.md).
+
+## Architecture
+
+```
+  game / app / site                       you                    your agent
+        |                                  |                          |
+        | GET  /api/v1/challenge           | /admin (session cookie)  | /mcp (bearer token)
+        | POST /api/v1/feedback            | /api/admin/*             |
+        v                                  v                          v
+ +-------------------------------------------------------------------------+
+ |                    feedback-harvest (one Rust binary)                   |
+ |                                                                         |
+ |  axum  ->  anti-spam pipeline  ->  SQLite (WAL)                         |
+ |                                     |- projects, feedback, tokens       |
+ |  embedded admin UI + widget.js      |- FTS5 porter (keyword)            |
+ |                                     |- FTS5 trigram (fuzzy)             |
+ |  background worker  --embeds-->     '- embeddings -> in-memory index    |
+ +--------|----------------------------------------------------------------+
+          v (optional)
+   OpenAI compatible /embeddings (OpenAI, Ollama, LM Studio, ...)
+```
+
+The server is axum on tokio with rusqlite (bundled SQLite with FTS5), argon2id for the admin password and rust-embed for the web assets. The admin UI is Preact with no other runtime dependencies (about 19 KB of JavaScript gzipped). The deep dive is [docs/architecture.md](docs/architecture.md).
+
+<details>
+<summary><b>Configuration</b> (all environment variables)</summary>
+
+<br>
+
+Everything is configured through environment variables. [.env.example](.env.example) is a commented template.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `FH_BIND` | `127.0.0.1:8080` | Listen address. The Docker image sets `0.0.0.0:8080` inside the container. |
 | `FH_DATABASE_PATH` | `feedback-harvest.db` | SQLite file. Image default `/data/feedback-harvest.db`. |
-| `FH_ADMIN_PASSWORD_HASH` | unset | Argon2 PHC string. Unset means every login is rejected. |
+| `FH_ADMIN_PASSWORD_HASH` | unset | Argon2 PHC string from `feedback-harvest hash-password`. Unset means every login is rejected. |
 | `FH_ADMIN_PASSWORD_HASH_FILE` | unset | File containing the hash. Takes precedence. |
 | `FH_SESSION_TTL_HOURS` | `168` | Admin session lifetime. |
-| `FH_COOKIE_SECURE` | `true` | `Secure` flag on the session cookie. Only disable for http on localhost. |
-| `FH_TRUSTED_PROXY_HOPS` | `0` | Trusted reverse proxies for `X-Forwarded-For`. Image default `1`. |
+| `FH_COOKIE_SECURE` | `true` | `Secure` flag on the session cookie. Only disable for plain http on localhost. |
+| `FH_TRUSTED_PROXY_HOPS` | `0` | Reverse proxies to trust for `X-Forwarded-For`. Image default `1`. |
 | `FH_LIMIT_IP_PROJECT_MINUTE` | `3` | Submissions per IP per project per minute. |
 | `FH_LIMIT_IP_PROJECT_HOUR` | `10` | Per IP per project per hour. |
 | `FH_LIMIT_IP_PROJECT_DAY` | `30` | Per IP per project per day. |
@@ -120,68 +301,84 @@ All settings are environment variables. See [.env.example](.env.example) for a c
 | `FH_EMBED_API_KEY` / `FH_EMBED_API_KEY_FILE` | unset | Bearer token for the embedding API. |
 | `RUST_LOG` | `info` | Log filter (tracing `EnvFilter` syntax). |
 
-Login attempts are limited to 5 per 15 minutes per IP (not configurable).
+Admin login attempts are limited to 5 failures per 15 minutes per IP and failed MCP token attempts to 20 per 15 minutes per IP (not configurable).
 
-## Embedding providers
+</details>
 
-Semantic search quality depends entirely on the embedding provider. Switching providers is safe: vectors are tagged with the model id, and rows embedded with another model are re-embedded in the background.
+<details>
+<summary><b>Security model</b></summary>
 
-- **`hash` (default)**: built in, offline, deterministic, zero cost. Signed feature hashing over stemmed words, bigrams and character trigrams, plus a small concept map that groups common game and app vocabulary (crash, freeze, stuck; lag, stutter, fps; and so on). It is lexical with a little help, not real semantic understanding. Good enough to get started and for tests.
-- **`openai`** with OpenAI: `FH_EMBED_URL=https://api.openai.com/v1`, `FH_EMBED_MODEL=text-embedding-3-small`, `FH_EMBED_API_KEY=...`. Excellent quality, costs fractions of a cent at this volume, sends feedback text to OpenAI.
-- **`openai`** with Ollama (self-hosted, recommended for real semantic search without third parties): run Ollama next to the app (a Coolify service or the commented sidecar in `docker-compose.yml`), `ollama pull nomic-embed-text`, then `FH_EMBED_URL=http://ollama:11434/v1`, `FH_EMBED_MODEL=nomic-embed-text`. Any other OpenAI compatible server (LM Studio, vLLM, llama.cpp server) works the same way.
+<br>
 
-If the provider is down, submissions still land and keyword/fuzzy search keep working. The worker retries with backoff and fills in vectors later. `POST /api/admin/reindex` re-embeds everything.
+- **One admin.** The password is verified with argon2id. Sessions are random 256 bit tokens; only their SHA-256 is stored. The cookie is `HttpOnly`, `SameSite=Strict` and `Secure` by default, and state changing admin requests from a foreign `Origin` are rejected. Without a configured hash, every login fails.
+- **Public by design, guarded by layers.** The ingestion API is unauthenticated because anonymous players are its audience. The anti-spam pipeline protects it instead.
+- **Private by default.** The server binds `127.0.0.1` unless told otherwise. The Docker image binds `0.0.0.0` inside the container, which is fine only because Coolify publishes no host port and the compose file publishes to `127.0.0.1`. Never publish port 8080 on a public interface; go through the HTTPS proxy.
+- **Strict headers.** A `self`-only Content Security Policy and `X-Frame-Options: DENY` on the admin UI, `nosniff` and `no-referrer` everywhere.
+- **Agent tokens.** MCP clients use admin-issued bearer tokens with `read` or `write` scope, stored as SHA-256 and revocable instantly.
 
-## Integrating a product
+See [SECURITY.md](SECURITY.md).
 
-1. Create a project in the admin UI and copy its ingest key. The key is public by design (it ships inside your game or page) and can be rotated any time.
-2. Pick an integration:
-   - Link to the hosted page `https://<your-host>/s/<slug>`.
-   - Embed the widget on a web page, see [packages/widget/README.md](packages/widget/README.md).
-   - Call the API from any client: fetch a challenge, solve the proof of work, submit. See [docs/integrations.md](docs/integrations.md) for curl, Unity (C#), Godot (GDScript), C++ and Python examples.
+</details>
 
-## MCP for agents
+<details>
+<summary><b>Backups</b></summary>
 
-The binary also serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, so your coding agent can work with your feedback directly: list and create projects, triage the inbox, search by meaning, find duplicates, import reports from Discord or email, export data and draft release notes.
+<br>
 
-1. In the admin UI open **API tokens** and create a `read` or `write` token.
-2. Connect, for example with Claude Code:
+All state lives in one SQLite database in WAL mode. Do not copy the `.db` file alone while the server runs, because recent writes may still be in the `-wal` file. Instead:
 
-   ```sh
-   claude mcp add --transport http feedback-harvest https://<your-host>/mcp \
-     --header "Authorization: Bearer fht_..."
-   ```
-
-3. Ask: "triage the new feedback for starfall" or run the `triage_inbox` prompt.
-
-Cursor, VS Code, Claude Desktop (via the built-in `feedback-harvest mcp-stdio` bridge) and generic configs, the full tool reference, resources, prompts and security notes are in [docs/mcp.md](docs/mcp.md).
-
-## Backups
-
-The whole state is one SQLite database in WAL mode. Do not just copy the `.db` file while the server runs (recent writes may still sit in the `-wal` file). Instead:
-
-- Online snapshot from the host: `sqlite3 /path/to/volume/feedback-harvest.db ".backup '/backups/fh-$(date +%F).db'"`, or `VACUUM INTO '/backups/fh.db'`.
-- Continuous replication to S3 compatible storage with [Litestream](https://litestream.io) running next to the app against the same volume.
+- Take an online snapshot: `sqlite3 /path/to/feedback-harvest.db ".backup '/backups/fh-$(date +%F).db'"`, or `VACUUM INTO '/backups/fh.db'`.
+- Replicate continuously to S3 compatible storage with [Litestream](https://litestream.io) against the same volume.
 - Or stop the container and copy the `.db`, `-wal` and `-shm` files together.
 
-## Security model
+</details>
 
-- Single admin. The password is checked with argon2id; sessions are random 256 bit tokens, only their SHA-256 is stored. The cookie is `HttpOnly`, `SameSite=Strict` and `Secure` by default. State changing admin requests with a foreign `Origin` are rejected. Without a configured hash, every login fails.
-- The public ingestion API is intentionally unauthenticated (anonymous end users are its audience) and is protected by the anti-spam layers instead. It always answers `202 {"ok": true}` for stored, merged, quarantined and dropped submissions, so spammers learn nothing.
-- Raw IP addresses are never stored, only keyed HMAC pseudonyms (IPv6 at /64 granularity).
-- Private by default: the server binds `127.0.0.1` unless told otherwise. The Docker image binds `0.0.0.0` inside the container, which is only acceptable because Coolify publishes no host port (its proxy reaches the container over the private Docker network) and the compose file publishes to `127.0.0.1` only. Never publish port 8080 on a public interface; expose the app through the HTTPS proxy.
-- Strict security headers and a `self`-only Content Security Policy on the admin UI.
-- MCP clients authenticate with admin-issued bearer tokens (`read` or `write` scope, stored as SHA-256, revocable). Failed token attempts are rate limited per IP.
+## Project layout
 
-## Testing
+```
+crates/server/      Rust server and CLI (axum, rusqlite, argon2). Binary: feedback-harvest
+  src/routes/         public ingestion + hosted page, admin API, embedded assets
+  src/mcp/            MCP endpoint, tools, resources, prompts, stdio bridge
+  tests/              HTTP integration tests
+apps/admin/         Admin UI (Preact + Vite), embedded at /admin/
+packages/widget/    widget.js, ESM client and the TypeScript proof of work solver
+e2e/                Playwright tests against the real binary
+scripts/            Demo data seeding and README screenshots
+docs/               API contract, architecture, MCP, deployment, integrations
+```
+
+A Cargo workspace for Rust and a pnpm workspace for TypeScript.
+
+## Development
 
 ```sh
-pnpm check        # typecheck, rustfmt, clippy, Rust tests, web tests, Playwright e2e
-pnpm test:rust    # cargo test --workspace
-pnpm test:web     # widget and admin unit tests
-pnpm test:e2e     # builds web + server, then runs Playwright against the real binary
+pnpm install
+pnpm dev:server     # API on http://127.0.0.1:8080 (needs FH_ADMIN_PASSWORD_HASH and FH_COOKIE_SECURE=false)
+pnpm dev:admin      # admin UI with hot reload on http://127.0.0.1:5173/admin/, proxies the API
 ```
+
+`pnpm check` is the gate before every commit. It runs typecheck, rustfmt, clippy with `-D warnings`, the Rust unit and integration tests (100), the widget (29) and admin (29) tests, and the Playwright suite (7) against the real binary. The same steps run in [GitHub Actions](.github/workflows/ci.yml).
+
+```sh
+pnpm check          # everything
+pnpm test:rust      # cargo test --workspace
+pnpm test:web       # widget and admin unit tests
+pnpm test:e2e       # builds web + server, then runs Playwright
+pnpm screenshots              # rebuild and regenerate docs/assets
+```
+
+Conventions, invariants and gotchas for humans and coding agents are in [AGENTS.md](AGENTS.md). Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Roadmap
+
+Ideas, roughly in order of usefulness:
+
+- Notifications: a webhook, email or Discord message for new bugs, with a daily digest option.
+- Screenshot and log attachments, stored next to the database with size caps.
+- Local ONNX embeddings inside the binary, for real semantic search with zero setup.
+- Public "known issues" page per project, generated from triaged bugs.
+- Reply to the reporter from the admin UI when they left an email.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+[MIT](LICENSE) © 2026 George Kaltsikis

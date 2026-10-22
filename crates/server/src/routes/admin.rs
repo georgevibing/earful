@@ -92,15 +92,17 @@ async fn login(
         ));
     }
     let cfg = state.cfg.clone();
-    let ip_check = ip.clone();
     // Only failed attempts are counted, so a correct password never locks you out.
-    let limited = state
+    // The attempt is recorded together with the check (atomically, under the DB
+    // lock) and removed again on success; recording after the slow argon2 check
+    // would let concurrent guesses all pass the limit.
+    let attempt = state
         .db
         .call(move |c| {
             let rules = [
                 Rule {
                     bucket: "login",
-                    ip_hash: Some(&ip_check),
+                    ip_hash: Some(&ip),
                     window_secs: cfg.limits.login_window_secs,
                     limit: cfg.limits.logins_per_ip_window,
                 },
@@ -111,12 +113,15 @@ async fn login(
                     limit: 30,
                 },
             ];
-            Ok(ratelimit::check(c, now(), &rules)?)
+            let ts = now();
+            if let Err(retry_after) = ratelimit::check(c, ts, &rules)? {
+                return Ok(Err(retry_after));
+            }
+            ratelimit::record(c, "login", &ip, ts)?;
+            Ok(Ok(c.last_insert_rowid()))
         })
         .await?;
-    if let Err(retry_after) = limited {
-        return Err(AppError::RateLimited { retry_after });
-    }
+    let attempt = attempt.map_err(|retry_after| AppError::RateLimited { retry_after })?;
 
     let hash = state.cfg.admin_password_hash.clone();
     let ok =
@@ -124,12 +129,15 @@ async fn login(
             .await
             .map_err(|e| AppError::Internal(e.into()))?;
     if !ok {
-        state
-            .db
-            .call(move |c| Ok(ratelimit::record(c, "login", &ip, now())?))
-            .await?;
         return Err(AppError::InvalidCredentials);
     }
+    state
+        .db
+        .call(move |c| {
+            c.execute("DELETE FROM rate_events WHERE rowid = ?1", params![attempt])?;
+            Ok(())
+        })
+        .await?;
     let token = auth::create_session(&state).await?;
     Ok((
         jar.add(auth::session_cookie(&state, token)),
@@ -755,8 +763,10 @@ async fn ranked(
     state: &AppState,
     q: &str,
     mode: Mode,
-    project: Option<i64>,
+    filters: &Filters,
 ) -> AppResult<(Vec<(i64, f64)>, Mode, bool)> {
+    let project = filters.project_id;
+    let (scope_sql, scope_args) = filters.sql();
     let semantic = if matches!(mode, Mode::Hybrid | Mode::Semantic) {
         semantic_hits(state, q, project).await
     } else {
@@ -772,13 +782,17 @@ async fn ranked(
     let (keyword, fuzzy) = state
         .db
         .call(move |c| {
+            let scope = search::Scope {
+                sql: &scope_sql,
+                args: &scope_args,
+            };
             let kw = if matches!(effective, Mode::Hybrid | Mode::Keyword) {
-                search::keyword(c, &query)?
+                search::keyword(c, &query, scope)?
             } else {
                 vec![]
             };
             let fz = if matches!(effective, Mode::Hybrid | Mode::Fuzzy) {
-                search::fuzzy(c, &query)?
+                search::fuzzy(c, &query, scope)?
             } else {
                 vec![]
             };
@@ -879,7 +893,7 @@ pub(crate) async fn op_list_feedback(
         return Ok(json!({ "items": items, "total": total, "mode": mode, "semantic": false }));
     };
 
-    let (list, effective, used_vectors) = ranked(state, &text, mode, filters.project_id).await?;
+    let (list, effective, used_vectors) = ranked(state, &text, mode, &filters).await?;
     let all = state
         .db
         .call(move |c| Ok(fetch_ranked(c, &list, &filters)?))
@@ -1187,10 +1201,10 @@ pub(crate) async fn op_stats(state: &AppState, project_id: Option<i64>) -> AppRe
             let mut blocked: serde_json::Map<String, Value> =
                 BLOCK_REASONS.iter().map(|r| (r.to_string(), json!(0))).collect();
             let mut stmt = c.prepare(
-                "SELECT reason, COUNT(*) FROM block_events WHERE ts > ?2 AND (?1 IS NULL OR project_id = ?1)
+                "SELECT reason, SUM(n) FROM block_counts WHERE day > ?2 AND (?1 IS NULL OR project_id = ?1)
                  GROUP BY reason",
             )?;
-            for row in stmt.query_map(params![project_id, ts - 30 * 86400], |r| Ok((r.get(0)?, r.get(1)?)))? {
+            for row in stmt.query_map(params![project_id, ts / 86400 - 30], |r| Ok((r.get(0)?, r.get(1)?)))? {
                 let (reason, n): (String, i64) = row?;
                 blocked.insert(reason, json!(n));
             }

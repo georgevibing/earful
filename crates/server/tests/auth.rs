@@ -183,3 +183,36 @@ async fn malformed_login_body_is_a_json_error() {
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
     assert_eq!(r.json()["error"], "invalid_json");
 }
+
+#[tokio::test]
+async fn concurrent_wrong_passwords_cannot_bypass_the_login_limit() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+
+    let app = App::new().await;
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..20 {
+        let router = app.router.clone();
+        set.spawn(async move {
+            let req = Request::builder()
+                .method(Method::POST)
+                .uri("/api/admin/login")
+                .header("host", "fh.test")
+                .header("x-forwarded-for", "7.7.7.7")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"guess"}"#))
+                .unwrap();
+            router.oneshot(req).await.unwrap().status()
+        });
+    }
+    let mut guesses = 0;
+    while let Some(status) = set.join_next().await {
+        let status = status.unwrap();
+        if status == StatusCode::UNAUTHORIZED {
+            guesses += 1;
+        } else {
+            assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+    assert!(guesses <= 5, "{guesses} password guesses got through");
+}

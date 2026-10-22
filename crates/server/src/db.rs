@@ -129,6 +129,25 @@ CREATE TABLE api_tokens (
     last_used_at INTEGER
 );
 "#,
+    r#"
+-- Blocked submissions as daily counters instead of one row per request, so a
+-- flood of rejected requests cannot grow the database without bound.
+CREATE TABLE block_counts (
+    day        INTEGER NOT NULL, -- Unix day (ts / 86400, UTC)
+    project_id INTEGER NOT NULL, -- 0 when unknown
+    reason     TEXT NOT NULL,
+    n          INTEGER NOT NULL,
+    PRIMARY KEY (day, project_id, reason)
+);
+INSERT INTO block_counts (day, project_id, reason, n)
+    SELECT ts / 86400, COALESCE(project_id, 0), reason, COUNT(*) FROM block_events GROUP BY 1, 2, 3;
+DROP TABLE block_events;
+
+-- The near duplicate check runs once per item, so a reindex or model change
+-- never overrides an admin decision. Already embedded rows count as checked.
+ALTER TABLE feedback ADD COLUMN dup_checked INTEGER NOT NULL DEFAULT 0;
+UPDATE feedback SET dup_checked = 1 WHERE id IN (SELECT feedback_id FROM embeddings);
+"#,
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {

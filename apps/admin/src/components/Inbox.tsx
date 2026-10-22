@@ -171,6 +171,8 @@ export function Inbox({ params }: { params: URLSearchParams }) {
       } else if (e.key === 'k') {
         setCursor((c) => Math.max(c - 1, 0));
       } else if (e.key === 'Enter') {
+        // A focused button or link handles Enter itself.
+        if (e.target instanceof Element && e.target.closest('button, a, [role="tab"]')) return;
         const item = items[cursor];
         if (item) open(item.id);
       } else if (e.key === 'e') {

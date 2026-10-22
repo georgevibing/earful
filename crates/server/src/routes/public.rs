@@ -463,7 +463,8 @@ pub(crate) async fn op_create_feedback(
                 c, project_id, &clean, &status, None, 0.0, &hash, "mcp", created,
             )?;
             c.execute(
-                "UPDATE feedback SET admin_note = ?2, updated_at = ?3 WHERE id = ?1",
+                // Imports are curated by the admin: skip the near duplicate check.
+                "UPDATE feedback SET admin_note = ?2, updated_at = ?3, dup_checked = 1 WHERE id = ?1",
                 params![id, note, ts],
             )?;
             Ok(Ok(id))

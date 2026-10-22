@@ -149,3 +149,17 @@ async fn admin_spa_and_widget_degrade_or_serve() {
         assert_eq!(w.header("access-control-allow-origin"), Some("*"));
     }
 }
+
+#[tokio::test]
+async fn admin_assets_do_not_allow_path_traversal() {
+    let app = common::App::new().await;
+    for path in [
+        "/admin/..%2f..%2f..%2fCargo.toml",
+        "/admin/%2e%2e/%2e%2e/%2e%2e/Cargo.toml",
+        "/admin/..%5c..%5c..%5cCargo.toml",
+        "/admin/assets/..%2f..%2f..%2f..%2fCargo.toml",
+    ] {
+        let r = app.get(path).anonymous().send().await;
+        assert!(!r.text.contains("[workspace]"), "{path} leaked a file");
+    }
+}

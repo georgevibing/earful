@@ -58,8 +58,9 @@ pub fn record_block(
     now: i64,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO block_events (project_id, reason, ts) VALUES (?1, ?2, ?3)",
-        params![project_id, reason, now],
+        "INSERT INTO block_counts (day, project_id, reason, n) VALUES (?1 / 86400, COALESCE(?2, 0), ?3, 1)
+         ON CONFLICT (day, project_id, reason) DO UPDATE SET n = n + 1",
+        params![now, project_id, reason],
     )?;
     Ok(())
 }

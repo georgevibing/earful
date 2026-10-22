@@ -299,8 +299,17 @@ pub fn from_blob(b: &[u8]) -> Vec<f32> {
         .collect()
 }
 
+/// Characters sent to the embedder per item. Keeps every input well inside
+/// provider context limits (8k tokens for OpenAI even for CJK text), because one
+/// rejected input fails its whole batch and would stall the queue behind it.
+pub const MAX_EMBED_CHARS: usize = 2000;
+
 pub fn feedback_text(kind: &str, title: &str, body: &str) -> String {
-    format!("{kind}: {title}\n{body}")
+    let text = format!("{kind}: {title}\n{body}");
+    match text.char_indices().nth(MAX_EMBED_CHARS) {
+        Some((idx, _)) => text[..idx].to_string(),
+        None => text,
+    }
 }
 
 /// Brute force cosine index. Thousands of vectors fit in a few MB and scan in microseconds.
@@ -387,6 +396,14 @@ mod tests {
         let related = hash_embed("it crashed and got stuck on the loading screen", 384);
         let unrelated = hash_embed("I love the soundtrack and the art style", 384);
         assert!(dot(&q, &related) > dot(&q, &unrelated));
+    }
+
+    #[test]
+    fn feedback_text_is_bounded() {
+        let long = "漢".repeat(10_000);
+        let t = feedback_text("bug", "title", &long);
+        assert_eq!(t.chars().count(), MAX_EMBED_CHARS);
+        assert_eq!(feedback_text("bug", "t", "b"), "bug: t\nb");
     }
 
     #[test]

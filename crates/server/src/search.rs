@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, params_from_iter, types::Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -17,6 +17,24 @@ pub enum Mode {
 
 const CANDIDATES: usize = 300;
 
+/// Extra SQL predicate over `feedback` columns (anonymous `?` placeholders),
+/// applied before the candidate cap so filtered searches are not crowded out
+/// by matches in other projects or statuses.
+#[derive(Clone, Copy)]
+pub struct Scope<'a> {
+    pub sql: &'a str,
+    pub args: &'a [Value],
+}
+
+impl Scope<'_> {
+    fn bind(&self, before: Value) -> Vec<Value> {
+        let mut out = vec![before];
+        out.extend(self.args.iter().cloned());
+        out.push(Value::Integer(CANDIDATES as i64));
+        out
+    }
+}
+
 fn words(q: &str) -> Vec<String> {
     q.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -27,7 +45,7 @@ fn words(q: &str) -> Vec<String> {
 }
 
 /// BM25 over the stemmed word index. Each term is a prefix match, OR'ed together.
-pub fn keyword(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
+pub fn keyword(conn: &Connection, q: &str, scope: Scope) -> rusqlite::Result<Vec<(i64, f64)>> {
     let terms = words(q);
     if terms.is_empty() {
         return Ok(vec![]);
@@ -37,11 +55,13 @@ pub fn keyword(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> 
         .map(|t| format!("\"{t}\"*"))
         .collect::<Vec<_>>()
         .join(" OR ");
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT rowid, bm25(feedback_fts, 3.0, 1.0, 0.5) AS r FROM feedback_fts
-         WHERE feedback_fts MATCH ?1 ORDER BY r LIMIT ?2",
-    )?;
-    let rows = stmt.query_map(params![fts, CANDIDATES as i64], |r| {
+         WHERE feedback_fts MATCH ? AND rowid IN (SELECT id FROM feedback WHERE {})
+         ORDER BY r LIMIT ?",
+        scope.sql
+    ))?;
+    let rows = stmt.query_map(params_from_iter(scope.bind(Value::Text(fts))), |r| {
         Ok((r.get(0)?, -r.get::<_, f64>(1)?))
     })?;
     rows.collect()
@@ -49,7 +69,7 @@ pub fn keyword(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> 
 
 /// Typo tolerant search. Trigram index finds candidates sharing any trigram with
 /// the query, then each candidate is scored by best per-word similarity.
-pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
+pub fn fuzzy(conn: &Connection, q: &str, scope: Scope) -> rusqlite::Result<Vec<(i64, f64)>> {
     let terms = words(q);
     if terms.is_empty() {
         return Ok(vec![]);
@@ -70,11 +90,14 @@ pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
     let candidates: Vec<(i64, String, String)> = if trigrams.is_empty() {
         // Every term is shorter than three chars: fall back to a substring scan.
         let pattern = format!("%{}%", terms.join(" ").replace(['%', '_'], ""));
-        let mut stmt = conn.prepare(
-            "SELECT id, title, body FROM feedback WHERE title LIKE ?1 OR body LIKE ?1
-             ORDER BY created_at DESC LIMIT ?2",
-        )?;
-        stmt.query_map(params![pattern, CANDIDATES as i64], |r| {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id, title, body FROM feedback
+             WHERE id IN (SELECT id FROM feedback WHERE title LIKE ?1 OR body LIKE ?1)
+               AND id IN (SELECT id FROM feedback WHERE {})
+             ORDER BY created_at DESC LIMIT ?",
+            scope.sql
+        ))?;
+        stmt.query_map(params_from_iter(scope.bind(Value::Text(pattern))), |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?
         .collect::<rusqlite::Result<_>>()?
@@ -84,11 +107,13 @@ pub fn fuzzy(conn: &Connection, q: &str) -> rusqlite::Result<Vec<(i64, f64)>> {
             .map(|t| format!("\"{t}\""))
             .collect::<Vec<_>>()
             .join(" OR ");
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT f.id, f.title, f.body FROM feedback_tri t JOIN feedback f ON f.id = t.rowid
-             WHERE feedback_tri MATCH ?1 ORDER BY t.rank LIMIT ?2",
-        )?;
-        stmt.query_map(params![fts, CANDIDATES as i64], |r| {
+             WHERE feedback_tri MATCH ? AND f.id IN (SELECT id FROM feedback WHERE {})
+             ORDER BY t.rank LIMIT ?",
+            scope.sql
+        ))?;
+        stmt.query_map(params_from_iter(scope.bind(Value::Text(fts))), |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?
         .collect::<rusqlite::Result<_>>()?

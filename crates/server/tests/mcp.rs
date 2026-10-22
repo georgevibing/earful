@@ -1164,3 +1164,26 @@ async fn resources_and_prompts() {
         -32602
     );
 }
+
+#[tokio::test]
+async fn imported_feedback_is_never_flagged_as_near_duplicate() {
+    let app = App::admin().await;
+    let tok = token(&app, "write").await;
+    ok(&app, &tok, "create_project", json!({ "title": "Starfall" })).await;
+    // Two players on Discord report the same thing; the agent imports both.
+    for suffix in ["", "!"] {
+        ok(
+            &app,
+            &tok,
+            "create_feedback",
+            json!({
+                "project": "starfall", "kind": "bug",
+                "body": format!("The inventory crashes when I open it during combat in level three{suffix}")
+            }),
+        )
+        .await;
+    }
+    app.embed_all().await;
+    assert_eq!(app.feedback("status=spam").await["total"], 0);
+    assert_eq!(app.feedback("").await["total"], 2);
+}

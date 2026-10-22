@@ -8,6 +8,7 @@ use rusqlite::params;
 use crate::{
     db::now,
     embed::{self, dot},
+    ratelimit,
     state::AppState,
 };
 
@@ -126,7 +127,8 @@ async fn flag_near_duplicate(state: &AppState, id: i64) -> Result<()> {
             let mut stmt = c.prepare(
                 "SELECT o.id FROM feedback f JOIN feedback o
                    ON o.ip_hash = f.ip_hash AND o.project_id = f.project_id AND o.id != f.id
-                 WHERE f.id = ?1 AND f.status = 'new' AND o.created_at > f.created_at - 86400",
+                 WHERE f.id = ?1 AND f.status = 'new' AND f.dup_checked = 0
+                   AND o.created_at > f.created_at - 86400",
             )?;
             let rows = stmt.query_map(params![id], |r| r.get(0))?;
             Ok(rows.collect::<rusqlite::Result<Vec<i64>>>()?)
@@ -136,27 +138,33 @@ async fn flag_near_duplicate(state: &AppState, id: i64) -> Result<()> {
         .iter()
         .filter_map(|sid| state.index.get(*sid))
         .any(|other| dot(&vec, &other) >= NEAR_DUP_SIMILARITY);
-    if is_dup {
-        let ts = now();
-        state
-            .db
-            .call(move |c| {
-                let changed = c.execute(
-                    "UPDATE feedback SET status = 'spam', spam_reason = 'near_duplicate', updated_at = ?2
-                     WHERE id = ?1 AND status = 'new'",
-                    params![id, ts],
+    let ts = now();
+    state
+        .db
+        .call(move |c| {
+            c.execute(
+                "UPDATE feedback SET dup_checked = 1 WHERE id = ?1",
+                params![id],
+            )?;
+            if !is_dup {
+                return Ok(());
+            }
+            let changed = c.execute(
+                "UPDATE feedback SET status = 'spam', spam_reason = 'near_duplicate', updated_at = ?2
+                 WHERE id = ?1 AND status = 'new'",
+                params![id, ts],
+            )?;
+            if changed > 0 {
+                let project_id: i64 = c.query_row(
+                    "SELECT project_id FROM feedback WHERE id = ?1",
+                    params![id],
+                    |r| r.get(0),
                 )?;
-                if changed > 0 {
-                    c.execute(
-                        "INSERT INTO block_events (project_id, reason, ts)
-                         SELECT project_id, 'near_duplicate', ?2 FROM feedback WHERE id = ?1",
-                        params![id, ts],
-                    )?;
-                }
-                Ok(())
-            })
-            .await?;
-    }
+                ratelimit::record_block(c, Some(project_id), "near_duplicate", ts)?;
+            }
+            Ok(())
+        })
+        .await?;
     Ok(())
 }
 
@@ -175,8 +183,8 @@ pub async fn prune(state: &AppState) -> Result<()> {
             )?;
             c.execute("DELETE FROM sessions WHERE expires_at < ?1", params![ts])?;
             c.execute(
-                "DELETE FROM block_events WHERE ts < ?1",
-                params![ts - 90 * 86400],
+                "DELETE FROM block_counts WHERE day < ?1",
+                params![ts / 86400 - 90],
             )?;
             Ok(())
         })

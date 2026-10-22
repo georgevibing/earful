@@ -689,3 +689,39 @@ async fn reindex_rebuilds_vectors() {
     app.embed_all().await;
     assert_eq!(app.state.index.len(), 5);
 }
+
+#[tokio::test]
+async fn search_candidates_are_scoped_before_the_candidate_cap() {
+    let app = App::admin().await;
+    let a = app.create_project("Quiet").await["id"].as_i64().unwrap();
+    let b = app.create_project("Noisy").await["id"].as_i64().unwrap();
+    // 400 strongly matching rows in another project must not crowd out the one in `a`.
+    app.state
+        .db
+        .call(move |c| {
+            let tx = c.transaction()?;
+            for i in 0..400 {
+                tx.execute(
+                    "INSERT INTO feedback (project_id, kind, title, body, content_hash, ip_hash, created_at, updated_at, last_seen_at)
+                     VALUES (?1, 'bug', 'crash crash crash', 'crash crash crash crash', ?2, 'x', 1, 1, 1)",
+                    rusqlite::params![b, format!("h{i}")],
+                )?;
+            }
+            tx.execute(
+                "INSERT INTO feedback (project_id, kind, title, body, content_hash, ip_hash, created_at, updated_at, last_seen_at)
+                 VALUES (?1, 'bug', 'Startup problem', 'it might crash sometimes when loading a long save file from the cloud', 'only', 'y', 1, 1, 1)",
+                rusqlite::params![a],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    for mode in ["keyword", "fuzzy", "hybrid"] {
+        let r = app
+            .feedback(&format!("project_id={a}&q=crash&mode={mode}"))
+            .await;
+        assert_eq!(r["total"], 1, "{mode}: {r}");
+        assert_eq!(titles(&r), vec!["Startup problem"], "{mode}");
+    }
+}

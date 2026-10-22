@@ -34,7 +34,8 @@ embeddings      feedback_id -> feedback (cascade), model, vec (f32 LE blob)
 sessions        token_hash (sha256), created_at, expires_at
 rate_events     bucket, ip_hash, ts           sliding window counters
 used_challenges id, expires_at                single use enforcement
-block_events    project_id, reason, ts        dashboard counters
+block_counts    day, project_id, reason, n    per day dashboard counters (bounded growth)
+api_tokens      name, scope, token_hash, prefix, last_used_at   MCP and script bearer tokens
 settings        key, value                    server secret (HMAC key)
 ```
 
@@ -60,7 +61,7 @@ Every public submission passes these layers in order. Each one exists to make a 
 
 **Quarantine instead of reject.** Soft signals (7, 8, 9) store the item with `status = spam` and a `spam_reason`, visible in the admin Spam tab where it can be restored. False positives are never lost, and the response is identical to a clean submission (`202 {"ok": true}`), so an attacker cannot probe which rule fired. Hard failures that a legit client must react to (validation, rate limit, invalid challenge) return explicit errors.
 
-All rejections and quarantines are counted in `block_events` and shown on the dashboard.
+All rejections and quarantines are counted per UTC day in `block_counts` (one row per day, project and reason, so a flood cannot grow the database) and shown on the dashboard.
 
 ## Search
 

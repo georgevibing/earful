@@ -60,7 +60,10 @@ Pipeline order: project lookup, honeypot (silent drop), validation, rate limits
 (IP+project per minute/hour/day, IP global per day, project per hour), PoW
 verify + single use, exact duplicate (same IP: drop, other IP: `dup_count += 1`
 on the original), heuristic spam score + too fast check (quarantine as
-`status = spam` with `spam_reason`), insert, async embedding, near duplicate check.
+`status = spam` with `spam_reason`), insert, async embedding, near duplicate check
+(runs once per item; reindexing never re-quarantines an item the admin restored, and
+MCP imports are never checked). Blocked outcomes are stored as per day counters, so
+rejected floods do not grow the database per request.
 
 ### `GET /s/<slug>`
 
@@ -82,7 +85,7 @@ Every non-GET admin request with an `Origin` header must match `Host`, else
 
 ### Auth
 
-- `POST /api/admin/login` `{ "password": "..." }` gives `204` + cookie, `401 invalid_credentials`, `429 rate_limited` (5 failed attempts per 15 min per IP, 30 failed per hour globally; successful logins are not counted).
+- `POST /api/admin/login` `{ "password": "..." }` gives `204` + cookie, `401 invalid_credentials`, `429 rate_limited` (5 failed attempts per 15 min per IP, 30 failed per hour globally; successful logins are not counted). Attempts are reserved before the password check, so concurrent guesses cannot exceed the limit.
 - `POST /api/admin/logout` gives `204`, clears cookie.
 - `GET /api/admin/me` gives `200 {"ok": true}` or `401`.
 
@@ -142,7 +145,7 @@ Feedback object:
 {
   "totals": { "total": 0, "open": 0, "new": 0, "bugs": 0, "feedback": 0, "spam": 0, "last_7d": 0 },
   "daily": [ { "day": "2026-10-01", "bug": 0, "feedback": 0 } ],   // last 30 days, oldest first, zero filled
-  "blocked": { "rate_limited": 0, "honeypot": 0, "pow_insufficient": 0, "duplicate": 0, "spam_score": 0, "too_fast": 0, "near_duplicate": 0 },  // last 30 days; these keys are always present, other seen reason codes (e.g. challenge_used, challenge_expired, challenge_invalid) are added
+  "blocked": { "rate_limited": 0, "honeypot": 0, "pow_insufficient": 0, "duplicate": 0, "spam_score": 0, "too_fast": 0, "near_duplicate": 0 },  // last 30 UTC days; these keys are always present, other seen reason codes (e.g. challenge_used, challenge_expired, challenge_invalid) are added
   "embeddings": { "enabled": true, "model": "hash-v1-384", "embedded": 0, "pending": 0 }
 }
 ```

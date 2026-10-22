@@ -522,3 +522,55 @@ async fn submissions_are_isolated_per_project() {
         1
     );
 }
+
+#[tokio::test]
+async fn admin_restored_items_are_not_requarantined_by_a_reindex() {
+    let (app, key, _) = setup().await;
+    let text = "The inventory crashes when I open it during combat in level three";
+    app.submit_ok(&key, "2.2.2.2", "bug", "Inventory", text)
+        .await;
+    app.submit_ok(&key, "2.2.2.2", "bug", "Inventory", &format!("{text}!!"))
+        .await;
+    app.embed_all().await;
+    let spam = app.feedback("status=spam").await;
+    let id = ids(&spam)[0];
+    // The admin decides it is not spam after all.
+    let r = app
+        .patch(&format!("/api/admin/feedback/{id}"))
+        .json(json!({ "status": "new" }))
+        .send()
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert_eq!(
+        app.post("/api/admin/reindex").send().await.status,
+        StatusCode::ACCEPTED
+    );
+    app.embed_all().await;
+    assert_eq!(app.feedback("status=spam").await["total"], 0);
+    assert_eq!(app.feedback("").await["total"], 2);
+}
+
+#[tokio::test]
+async fn blocked_requests_do_not_grow_the_database_per_request() {
+    let (app, key, _) = setup().await;
+    for _ in 0..40 {
+        let r = app
+            .post("/api/v1/feedback")
+            .anonymous()
+            .ip("3.3.3.3")
+            .json(json!({ "key": key, "kind": "bug", "body": "spam spam", "website": "x" }))
+            .send()
+            .await;
+        assert_eq!(r.status, StatusCode::ACCEPTED);
+    }
+    let stats = app.get("/api/admin/stats").send().await.json();
+    assert_eq!(stats["blocked"]["honeypot"], 40);
+    // Blocks are aggregated per day, project and reason: one row, not forty.
+    let rows: i64 = app
+        .state
+        .db
+        .call(|c| Ok(c.query_row("SELECT COUNT(*) FROM block_counts", [], |r| r.get(0))?))
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+}

@@ -113,4 +113,19 @@ describe('Inbox', () => {
     fireEvent.keyDown(document.body, { key: 'Enter' });
     await waitFor(() => expect(location.hash).toContain('open=2'));
   });
+
+  it('does not hijack Enter while a button or link has focus', async () => {
+    mockFetch({
+      'GET /api/admin/projects': () => ({ body: [] }),
+      'GET /api/admin/feedback': () => ({ body: { items: [item(1)], total: 1, mode: 'hybrid', semantic: true } }),
+    });
+    render(<Inbox params={new URLSearchParams()} />);
+    await screen.findAllByTestId('feedback-row');
+    const tab = screen.getByRole('tab', { name: 'Archived' });
+    tab.focus();
+    // Enter activates the focused control natively; it must not also open the cursor item.
+    fireEvent.keyDown(tab, { key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(location.hash).not.toContain('open=');
+  });
 });

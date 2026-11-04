@@ -124,6 +124,7 @@ pub struct SubmitBody {
     contact: Option<String>,
     rating: Option<i64>,
     meta: Option<Value>,
+    diagnostics: Option<Value>,
     source: Option<String>,
     challenge: Option<String>,
     nonce: Option<Value>,
@@ -137,6 +138,7 @@ struct Clean {
     contact: Option<String>,
     rating: Option<i64>,
     meta: String,
+    diagnostics: String,
     source: String,
 }
 
@@ -145,7 +147,7 @@ fn validate(b: &SubmitBody) -> AppResult<Clean> {
     if !crate::models::KINDS.contains(&kind) {
         return Err(AppError::bad(
             "invalid_kind",
-            "kind must be \"bug\" or \"feedback\"",
+            "kind must be bug, feedback, crash, exception or log",
         ));
     }
     let body = spam::sanitize(b.body.as_deref().unwrap_or_default());
@@ -196,6 +198,16 @@ fn validate(b: &SubmitBody) -> AppResult<Clean> {
         }
         Some(_) => return Err(AppError::bad("invalid_meta", "meta must be a JSON object")),
     };
+    let diagnostics = match &b.diagnostics {
+        None | Some(Value::Null) => "{}".to_string(),
+        Some(v @ Value::Object(_)) if v.to_string().len() <= 65536 => v.to_string(),
+        Some(_) => {
+            return Err(AppError::bad(
+                "invalid_diagnostics",
+                "diagnostics must be an object of at most 65536 UTF-8 bytes",
+            ));
+        }
+    };
     let source = b.source.as_deref().map(str::trim).unwrap_or("api");
     if source != "api" && source != "web" {
         return Err(AppError::bad(
@@ -210,6 +222,7 @@ fn validate(b: &SubmitBody) -> AppResult<Clean> {
         contact: (!contact.is_empty()).then_some(contact),
         rating: b.rating,
         meta,
+        diagnostics,
         source: source.to_string(),
     })
 }
@@ -306,7 +319,7 @@ pub async fn submit(
             ratelimit::record(c, &bucket, &ip, ts)?;
             ratelimit::record(c, "submit", &ip, ts)?;
 
-            let hash = spam::content_hash(&clean.title, &clean.body);
+            let hash = spam::content_hash(&format!("{}:{}", clean.kind, clean.title), &format!("{}\n{}", clean.body, clean.diagnostics));
             let existing: Option<(i64, String)> = c
                 .query_row(
                     "SELECT id, ip_hash FROM feedback WHERE project_id = ?1 AND content_hash = ?2
@@ -368,8 +381,8 @@ fn insert_feedback(
 ) -> rusqlite::Result<i64> {
     c.execute(
         "INSERT INTO feedback (project_id, kind, title, body, contact, rating, meta, source, status,
-            spam_reason, spam_score, content_hash, ip_hash, created_at, updated_at, last_seen_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14)",
+            spam_reason, spam_score, content_hash, ip_hash, created_at, updated_at, last_seen_at, diagnostics)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14, ?15)",
         params![
             pid,
             clean.kind,
@@ -384,7 +397,8 @@ fn insert_feedback(
             score,
             hash,
             ip_hash,
-            ts
+            ts,
+            clean.diagnostics
         ],
     )?;
     Ok(c.last_insert_rowid())
@@ -400,6 +414,7 @@ pub(crate) struct AdminFeedbackInput {
     pub(crate) contact: Option<String>,
     pub(crate) rating: Option<i64>,
     pub(crate) meta: Option<Value>,
+    pub(crate) diagnostics: Option<Value>,
     pub(crate) status: Option<String>,
     pub(crate) admin_note: Option<String>,
     pub(crate) created_at: Option<i64>,
@@ -419,6 +434,7 @@ pub(crate) async fn op_create_feedback(
         contact: input.contact,
         rating: input.rating,
         meta: input.meta,
+        diagnostics: input.diagnostics,
         source: None,
         challenge: None,
         nonce: None,
@@ -458,7 +474,7 @@ pub(crate) async fn op_create_feedback(
             if !exists {
                 return Ok(Err(AppError::NotFound));
             }
-            let hash = spam::content_hash(&clean.title, &clean.body);
+            let hash = spam::content_hash(&format!("{}:{}", clean.kind, clean.title), &format!("{}\n{}", clean.body, clean.diagnostics));
             let id = insert_feedback(
                 c, project_id, &clean, &status, None, 0.0, &hash, "mcp", created,
             )?;

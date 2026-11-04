@@ -565,6 +565,7 @@ const CSV_HEADER: &[&str] = &[
     "contact",
     "rating",
     "meta",
+    "diagnostics",
     "source",
     "spam_reason",
     "dup_count",
@@ -587,6 +588,7 @@ pub(crate) fn to_csv(items: &[Feedback]) -> String {
             f.contact.clone().unwrap_or_default(),
             f.rating.map(|r| r.to_string()).unwrap_or_default(),
             f.meta.to_string(),
+            f.diagnostics.to_string(),
             f.source.clone(),
             f.spam_reason.clone().unwrap_or_default(),
             f.dup_count.to_string(),
@@ -716,12 +718,12 @@ fn parse_int(q: &HashMap<String, String>, key: &str) -> AppResult<Option<i64>> {
 fn parse_filters(q: &HashMap<String, String>) -> AppResult<Filters> {
     let kind = match q.get("kind").map(|v| v.trim()).filter(|v| !v.is_empty()) {
         None => None,
-        Some(k) => Some(
-            *KINDS
-                .iter()
-                .find(|x| **x == k)
-                .ok_or_else(|| AppError::bad("invalid_query", "kind must be bug or feedback"))?,
-        ),
+        Some(k) => Some(*KINDS.iter().find(|x| **x == k).ok_or_else(|| {
+            AppError::bad(
+                "invalid_query",
+                "kind must be bug, feedback, crash, exception or log",
+            )
+        })?),
     };
     let status = match q.get("status").map(|v| v.trim()).filter(|v| !v.is_empty()) {
         None | Some("open") => StatusFilter::Open,
@@ -1109,7 +1111,7 @@ pub(crate) async fn op_update_feedback(
         Some(k) if !KINDS.contains(&k) => {
             return Err(AppError::bad(
                 "invalid_kind",
-                "kind must be bug or feedback",
+                "kind must be bug, feedback, crash, exception or log",
             ));
         }
         k => k.map(str::to_string),
@@ -1265,6 +1267,11 @@ pub(crate) async fn op_stats(state: &AppState, project_id: Option<i64>) -> AppRe
                 |r| r.get(0),
             )?;
 
+            let mut kind_counts = serde_json::Map::new();
+            for kind in crate::models::KINDS {
+                let n: i64 = c.query_row("SELECT COUNT(*) FROM feedback WHERE kind = ?1 AND status != 'spam' AND (?2 IS NULL OR project_id = ?2)", params![kind, project_id], |r| r.get(0))?;
+                kind_counts.insert((*kind).to_string(), json!(n));
+            }
             let today = time::OffsetDateTime::from_unix_timestamp(ts)?.date();
             let start = today - time::Duration::days(29);
             let start_ts = start.midnight().assume_utc().unix_timestamp();
@@ -1315,6 +1322,7 @@ pub(crate) async fn op_stats(state: &AppState, project_id: Option<i64>) -> AppRe
                     "feedback": s.feedback, "spam": s.spam, "last_7d": last_7d,
                 },
                 "daily": daily,
+                "kind_counts": kind_counts,
                 "blocked": blocked,
                 "embeddings": {
                     "enabled": enabled,

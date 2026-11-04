@@ -247,3 +247,19 @@ combined with label IDs. `summarize_feedback` analyzes themes without changing t
   can be sniffed; the stdio bridge refuses non-localhost `http://` URLs for that reason.
 - `/mcp` shares the listener with the admin API and is reachable wherever the server is,
   guarded by the token. The bind and proxy rules in `docs/deploy-coolify.md` apply unchanged.
+
+
+## Diagnostic reports
+
+The existing POST /api/v1/feedback and SDK submit accept kind crash, exception and
+log alongside bug and feedback. MCP create_feedback accepts the same kinds and
+diagnostics. An optional diagnostics JSON object holds at most 65536 serialized
+UTF-8 bytes; omitted/null becomes {}. Other types or larger objects return
+invalid_diagnostics. The public request limit is 128 KiB; existing body (3-10000
+characters), meta (4096 bytes), PoW and rate limits still apply.
+
+Diagnostics round-trip through list/detail, MCP and JSON/CSV exports. Filter by
+kind with the existing status/project/label filters. Stats include kind_counts
+excluding spam. The daily chart still shows bugs and feedback only. Search indexes
+title/body, so include the exception signature there. See docs/crash-reporting.md
+in the repository for integration and agent workflows.

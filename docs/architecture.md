@@ -23,7 +23,7 @@ feedback-harvest is deliberately boring: one process, one SQLite file, no queue,
 ```
 projects        id, slug (unique), title, project_type, description,
                 ingest_key (unique, public), accepting, created_at, updated_at
-feedback        id, project_id -> projects (cascade), kind (bug|feedback),
+feedback        id, project_id -> projects (cascade), kind (bug|feedback|crash|exception|log),
                 title, body, contact, rating (1..5), meta (JSON), source (api|web),
                 status (new|triaged|resolved|archived|spam), spam_reason, spam_score,
                 admin_note, content_hash, dup_count, ip_hash,
@@ -107,3 +107,19 @@ Known limits, accepted for a personal tool:
 - **Single admin**, single password, no MFA. Put the admin UI behind an additional gate (VPN, Tailscale, Cloudflare Access) if that matters to you.
 - **Embedding providers** see the feedback text. `model2vec` and `hash` run in process and never send data anywhere; for `openai`, prefer a self-hosted Ollama to keep data on your box.
 - **Model2Vec quality** is good for short, single language feedback but below transformer models on long or subtle text, and potion-base-8M is English first. Switch to an OpenAI compatible provider if that matters.
+
+
+## Diagnostic reports
+
+The existing POST /api/v1/feedback and SDK submit accept kind crash, exception and
+log alongside bug and feedback. MCP create_feedback accepts the same kinds and
+diagnostics. An optional diagnostics JSON object holds at most 65536 serialized
+UTF-8 bytes; omitted/null becomes {}. Other types or larger objects return
+invalid_diagnostics. The public request limit is 128 KiB; existing body (3-10000
+characters), meta (4096 bytes), PoW and rate limits still apply.
+
+Diagnostics round-trip through list/detail, MCP and JSON/CSV exports. Filter by
+kind with the existing status/project/label filters. Stats include kind_counts
+excluding spam. The daily chart still shows bugs and feedback only. Search indexes
+title/body, so include the exception signature there. See docs/crash-reporting.md
+in the repository for integration and agent workflows.

@@ -84,7 +84,10 @@ export function Dashboard() {
           <Tile label="New" value={t?.new} link={feedbackLink({ projectId, status: 'new' })} />
           <Tile label="Bugs" value={t?.bugs} link={feedbackLink({ projectId, status: 'all', kind: 'bug' })} />
           <Tile label="Feedback" value={t?.feedback} link={feedbackLink({ projectId, status: 'all', kind: 'feedback' })} />
-          <Tile label="Last 7 days" value={t?.last_7d} />
+          {(['crash', 'exception', 'log'] as const).map((kind) => (
+            <Tile key={kind} label={{ crash: 'Crashes', exception: 'Exceptions', log: 'Logs' }[kind]} value={stats?.kind_counts?.[kind] ?? 0} link={feedbackLink({ projectId, status: 'all', kind })} />
+          ))}
+          <Tile label="Last 7 days"  value={t?.last_7d} />
           <Tile label="In spam" value={t?.spam} link={feedbackLink({ projectId, status: 'spam' })} />
         </div>
 

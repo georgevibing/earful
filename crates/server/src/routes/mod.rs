@@ -37,7 +37,7 @@ pub fn build_router(state: AppState) -> Router {
     let v1 = Router::new()
         .route("/challenge", get(public::challenge))
         .route("/feedback", post(public::submit))
-        .layer(DefaultBodyLimit::max(32 * 1024))
+        .layer(DefaultBodyLimit::max(128 * 1024))
         .layer(cors);
 
     Router::new()

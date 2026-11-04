@@ -1,7 +1,7 @@
 export const PROJECT_TYPES = ['game', 'webapp', 'mobile', 'desktop', 'service', 'library', 'other'] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 
-export const KINDS = ['bug', 'feedback'] as const;
+export const KINDS = ['bug', 'feedback', 'crash', 'exception', 'log'] as const;
 export type Kind = (typeof KINDS)[number];
 
 export const STATUSES = ['new', 'triaged', 'resolved', 'archived', 'spam'] as const;
@@ -71,6 +71,7 @@ export interface Feedback {
   body: string;
   contact: string | null;
   rating: number | null;
+  diagnostics?: Record<string, unknown>;
   meta: unknown;
   source: string;
   status: Status;
@@ -111,6 +112,7 @@ export interface DailyPoint {
 }
 
 export interface Stats {
+  kind_counts?: Partial<Record<Kind, number>>;
   totals: {
     total: number;
     open: number;

@@ -111,7 +111,7 @@ You do not need this package to submit feedback. The full contract is in [`docs/
 
 1. `GET /api/v1/challenge?key=<ingest_key>` returns `{ "challenge", "bits", "expires_in" }`. Fetch it when the feedback dialog opens.
 2. Find a decimal `nonce` (count up from 0) such that `sha256(utf8(challenge + ":" + nonce))` starts with at least `bits` zero bits. Around 18 bits by default, a fraction of a second in any language.
-3. `POST /api/v1/feedback` with JSON `{ key, kind: "bug" | "feedback", title, body, contact, rating, meta, challenge, nonce }`. Success is always `202 {"ok": true}`.
+3. `POST /api/v1/feedback` with JSON `{ key, kind: "bug" | "feedback" | "crash" | "exception" | "log", title, body, contact, rating, meta, challenge, nonce }`. Success is always `202 {"ok": true}`.
 
 Each challenge works once and expires after `expires_in` seconds. On `challenge_used` or `challenge_expired`, fetch a new one and retry.
 
@@ -124,3 +124,19 @@ pnpm --filter @feedback-harvest/widget typecheck
 ```
 
 The PoW test vector in `src/pow.test.ts` is shared with `crates/server/src/pow.rs`. Change both together.
+
+
+## Diagnostic reports
+
+The existing POST /api/v1/feedback and SDK submit accept kind crash, exception and
+log alongside bug and feedback. MCP create_feedback accepts the same kinds and
+diagnostics. An optional diagnostics JSON object holds at most 65536 serialized
+UTF-8 bytes; omitted/null becomes {}. Other types or larger objects return
+invalid_diagnostics. The public request limit is 128 KiB; existing body (3-10000
+characters), meta (4096 bytes), PoW and rate limits still apply.
+
+Diagnostics round-trip through list/detail, MCP and JSON/CSV exports. Filter by
+kind with the existing status/project/label filters. Stats include kind_counts
+excluding spam. The daily chart still shows bugs and feedback only. Search indexes
+title/body, so include the exception signature there. See docs/crash-reporting.md
+in the repository for integration and agent workflows.

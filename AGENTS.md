@@ -84,3 +84,9 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 - All definition and assignment logic lives in `routes/labels.rs` shared `op_*` functions. Assignments validate the entire batch in one transaction; prefer add/remove over replacing other actors' labels.
 - Keep label filters consistent across plain lists and all ranked search modes, including total counts before pagination. Hydrate labels for complete result pages with the batched `attach` query.
 - Update `docs/agent-themes.md` and MCP prompts when classification workflows change. Theme counts overlap; do not present them as unique users or votes.
+
+## Diagnostic reports
+Kinds also include crash, exception and log. Optional diagnostics is a JSON object
+up to 65536 serialized UTF-8 bytes, stored separately from the 4 KiB metadata.
+Keep HTTP/SDK/MCP validation aligned and preserve diagnostics in exports.
+Search indexes title/body, not diagnostic blobs. See docs/crash-reporting.md.

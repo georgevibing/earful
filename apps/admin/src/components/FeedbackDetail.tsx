@@ -158,6 +158,17 @@ export function FeedbackDetail({ id, terms, projectName, openHref, onClose, onCh
         </dd>
       </dl>
 
+      {f.diagnostics && Object.keys(f.diagnostics).length > 0 && (
+        <section class="diagnostics">
+          <h3>Diagnostics</h3>
+          {Object.entries(f.diagnostics).map(([key, value]) => (
+            <details key={key} open={key === 'stack_trace' || key === 'exception_type'}>
+              <summary>{key.replace(/_/g, ' ')}</summary>
+              <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>
+            </details>
+          ))}
+        </section>
+      )}
       {metaText && (
         <div>
           <h3 style={{ marginBottom: '4px' }}>Metadata</h3>

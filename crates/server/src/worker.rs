@@ -128,6 +128,7 @@ async fn flag_near_duplicate(state: &AppState, id: i64) -> Result<()> {
                 "SELECT o.id FROM feedback f JOIN feedback o
                    ON o.ip_hash = f.ip_hash AND o.project_id = f.project_id AND o.id != f.id
                  WHERE f.id = ?1 AND f.status = 'new' AND f.dup_checked = 0
+                   AND f.kind IN ('bug', 'feedback') AND o.kind = f.kind
                    AND o.created_at > f.created_at - 86400",
             )?;
             let rows = stmt.query_map(params![id], |r| r.get(0))?;

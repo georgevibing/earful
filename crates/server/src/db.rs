@@ -173,6 +173,58 @@ CREATE TABLE feedback_labels (
 );
 CREATE INDEX feedback_labels_label ON feedback_labels(label_id, feedback_id);
 "#,
+    r#"
+CREATE TABLE feedback_next (
+    id           INTEGER PRIMARY KEY,
+    project_id   INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL CHECK (kind IN ('bug', 'feedback', 'crash', 'exception', 'log')),
+    title        TEXT NOT NULL,
+    body         TEXT NOT NULL,
+    contact      TEXT,
+    rating       INTEGER CHECK (rating BETWEEN 1 AND 5),
+    meta         TEXT NOT NULL DEFAULT '{}',
+    source       TEXT NOT NULL DEFAULT 'api',
+    status       TEXT NOT NULL DEFAULT 'new'
+                 CHECK (status IN ('new', 'triaged', 'resolved', 'archived', 'spam')),
+    spam_reason  TEXT,
+    spam_score   REAL NOT NULL DEFAULT 0,
+    admin_note   TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL,
+    dup_count    INTEGER NOT NULL DEFAULT 0,
+    ip_hash      TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    dup_checked INTEGER NOT NULL DEFAULT 0,
+    diagnostics TEXT NOT NULL DEFAULT '{}'
+);
+INSERT INTO feedback_next SELECT *, '{}' FROM feedback;
+DROP TABLE feedback;
+ALTER TABLE feedback_next RENAME TO feedback;
+CREATE INDEX feedback_project_created ON feedback (project_id, created_at DESC);
+CREATE INDEX feedback_status ON feedback (status);
+CREATE INDEX feedback_hash ON feedback (project_id, content_hash, created_at);
+CREATE INDEX feedback_ip ON feedback (ip_hash, created_at);
+
+CREATE UNIQUE INDEX feedback_id_project ON feedback(id, project_id);
+CREATE TRIGGER feedback_ai AFTER INSERT ON feedback BEGIN
+    INSERT INTO feedback_fts (rowid, title, body, contact) VALUES (new.id, new.title, new.body, new.contact);
+    INSERT INTO feedback_tri (rowid, title, body) VALUES (new.id, new.title, new.body);
+END;
+CREATE TRIGGER feedback_ad AFTER DELETE ON feedback BEGIN
+    INSERT INTO feedback_fts (feedback_fts, rowid, title, body, contact) VALUES ('delete', old.id, old.title, old.body, old.contact);
+    INSERT INTO feedback_tri (feedback_tri, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+END;
+CREATE TRIGGER feedback_au AFTER UPDATE OF title, body, contact ON feedback BEGIN
+    INSERT INTO feedback_fts (feedback_fts, rowid, title, body, contact) VALUES ('delete', old.id, old.title, old.body, old.contact);
+    INSERT INTO feedback_tri (feedback_tri, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+    INSERT INTO feedback_fts (rowid, title, body, contact) VALUES (new.id, new.title, new.body, new.contact);
+    INSERT INTO feedback_tri (rowid, title, body) VALUES (new.id, new.title, new.body);
+END;
+
+INSERT INTO feedback_fts(feedback_fts) VALUES ('rebuild');
+INSERT INTO feedback_tri(feedback_tri) VALUES ('rebuild');
+"#,
 ];
 
 pub fn open(path: &Path) -> Result<Connection> {
@@ -193,11 +245,19 @@ fn configure(conn: &Connection) -> Result<()> {
 pub fn migrate(conn: &mut Connection) -> Result<()> {
     let current: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+        // Table rebuilds must preserve child rows, embeddings and label assignments.
+        conn.pragma_update(None, "foreign_keys", "OFF")?;
         let tx = conn.transaction()?;
         tx.execute_batch(sql)
             .with_context(|| format!("running migration {}", idx + 1))?;
         tx.pragma_update(None, "user_version", (idx + 1) as i64)?;
+        let violations: i64 =
+            tx.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| {
+                r.get(0)
+            })?;
+        anyhow::ensure!(violations == 0, "foreign key violations after migration");
         tx.commit()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         tracing::info!(version = idx + 1, "applied migration");
     }
     Ok(())
@@ -266,4 +326,44 @@ pub fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod diagnostic_migration_tests {
+    use super::*;
+    #[test]
+    fn upgrade_preserves_children_and_search() {
+        let mut c = Connection::open_in_memory().unwrap();
+        configure(&c).unwrap();
+        for sql in &MIGRATIONS[..MIGRATIONS.len() - 1] {
+            c.execute_batch(sql).unwrap();
+        }
+        c.pragma_update(None, "user_version", (MIGRATIONS.len() - 1) as i64)
+            .unwrap();
+        c.execute_batch("INSERT INTO projects VALUES(1,'game','Game','game','','key',1,1,1);
+          INSERT INTO feedback(id,project_id,kind,title,body,content_hash,ip_hash,created_at,updated_at,last_seen_at) VALUES(1,1,'bug','Inventory','Saving failed','hash','ip',1,1,1);
+          INSERT INTO labels VALUES(1,1,'Save','save','blue','',1,1);
+          INSERT INTO feedback_labels VALUES(1,1,1);
+          INSERT INTO embeddings VALUES(1,'test',x'00');").unwrap();
+        migrate(&mut c).unwrap();
+        for sql in [
+            "SELECT count(*) FROM feedback_labels",
+            "SELECT count(*) FROM embeddings",
+            "SELECT count(*) FROM feedback_fts WHERE feedback_fts MATCH 'Inventory'",
+        ] {
+            assert_eq!(c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        }
+        assert_eq!(
+            c.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        c.execute("DELETE FROM feedback WHERE id=1", []).unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM feedback_labels", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
 }

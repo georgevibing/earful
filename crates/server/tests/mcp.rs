@@ -1383,3 +1383,25 @@ async fn labels_tools_crud_filtering_scopes_and_theme_prompt() {
         .starts_with("not_found:")
     );
 }
+
+#[tokio::test]
+async fn diagnostic_reports_via_mcp() {
+    let app = App::admin().await;
+    app.create_project("Diagnostic game").await;
+    let write = token(&app, "write").await;
+    let read = token(&app, "read").await;
+    let args = json!({"project":"diagnostic-game","kind":"exception","body":"Inventory save failed","diagnostics":{"exception_type":"SaveError","stack_trace":"save.rs:42"}});
+    let item = ok(&app, &write, "create_feedback", args.clone()).await;
+    assert_eq!(item["diagnostics"]["exception_type"], "SaveError");
+    let got = ok(&app, &read, "get_feedback", json!({"id":item["id"]})).await;
+    assert!(got.to_string().contains("save.rs:42"));
+    let mut bad = args.clone();
+    bad["diagnostics"] = json!(["invalid"]);
+    assert!(
+        err(&app, &write, "create_feedback", bad)
+            .await
+            .contains("invalid_diagnostics")
+    );
+    let denied = tool(&app, &read, "create_feedback", args).await;
+    assert_eq!(denied["isError"], true);
+}

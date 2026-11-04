@@ -171,7 +171,7 @@ async fn validation_errors_are_specific() {
 #[tokio::test]
 async fn oversized_bodies_are_rejected() {
     let (app, key, _) = setup().await;
-    let body = json!({ "key": key, "kind": "bug", "body": "x".repeat(40_000) });
+    let body = json!({ "key": key, "kind": "bug", "body": "x".repeat(140_000) });
     let r = app
         .post("/api/v1/feedback")
         .anonymous()

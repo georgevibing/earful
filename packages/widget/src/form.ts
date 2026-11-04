@@ -131,6 +131,9 @@ export function friendlyError(err: unknown): string {
 }
 
 const PLACEHOLDERS: Record<FeedbackKind, string> = {
+  crash: 'What were you doing before the game crashed?',
+  exception: 'What operation failed?',
+  log: 'Describe what these logs show.',
   bug: 'What happened? What did you expect? Steps to reproduce help a lot.',
   feedback: 'What do you like? What would you change?',
 };

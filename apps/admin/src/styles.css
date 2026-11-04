@@ -985,3 +985,9 @@ kbd {
   .label-filter-controls, .label-filter-options { grid-template-columns: minmax(0, 1fr); }
   .label-filter-controls > button { justify-self: start; }
 }
+
+/* Diagnostic payloads remain readable without widening the mobile detail panel. */
+.diagnostics { min-width: 0; max-width: 100%; }
+.diagnostics pre { overflow: auto; max-height: 24rem; white-space: pre; }
+.dot.crash, .dot.exception { background: var(--critical); }
+.dot.log { background: var(--accent); }

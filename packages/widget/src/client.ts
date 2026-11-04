@@ -4,7 +4,7 @@
  */
 import { solve } from './pow';
 
-export type FeedbackKind = 'bug' | 'feedback';
+export type FeedbackKind = 'bug' | 'feedback' | 'crash' | 'exception' | 'log';
 
 export interface FeedbackInput {
   kind: FeedbackKind;
@@ -13,6 +13,8 @@ export interface FeedbackInput {
   contact?: string;
   /** 1 to 5, only meaningful for `feedback`. */
   rating?: number;
+  /** Bounded diagnostic context, at most 64 KiB serialized. */
+  diagnostics?: Record<string, unknown>;
   meta?: Record<string, unknown>;
   /** Honeypot. Leave empty; bots that fill every field get silently dropped. */
   website?: string;

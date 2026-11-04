@@ -127,7 +127,7 @@ for (const width of [320, 390, 768, 1280]) {
         await fitsViewport(page);
         if (path === '/') {
           const cards = page.locator('.kpis .tile');
-          await expect(cards).toHaveCount(6);
+          await expect(cards).toHaveCount(9);
           const heights = await cards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
           expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1);
           // Content should align within each card even when only one has a subtitle.

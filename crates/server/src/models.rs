@@ -4,7 +4,7 @@ use serde::Serialize;
 pub const PROJECT_TYPES: &[&str] = &[
     "game", "webapp", "mobile", "desktop", "service", "library", "other",
 ];
-pub const KINDS: &[&str] = &["bug", "feedback"];
+pub const KINDS: &[&str] = &["bug", "feedback", "crash", "exception", "log"];
 pub const STATUSES: &[&str] = &["new", "triaged", "resolved", "archived", "spam"];
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +49,7 @@ pub struct Feedback {
     pub contact: Option<String>,
     pub rating: Option<i64>,
     pub meta: serde_json::Value,
+    pub diagnostics: serde_json::Value,
     pub source: String,
     pub status: String,
     pub spam_reason: Option<String>,
@@ -66,7 +67,7 @@ pub struct Feedback {
 
 impl Feedback {
     pub const COLUMNS: &'static str = "id, project_id, kind, title, body, contact, rating, meta, source, status, \
-         spam_reason, spam_score, admin_note, dup_count, created_at, updated_at, last_seen_at";
+         spam_reason, spam_score, admin_note, dup_count, created_at, updated_at, last_seen_at, diagnostics";
 
     pub fn from_row(r: &Row) -> rusqlite::Result<Self> {
         let meta: String = r.get(7)?;
@@ -88,6 +89,8 @@ impl Feedback {
             created_at: r.get(14)?,
             updated_at: r.get(15)?,
             last_seen_at: r.get(16)?,
+            diagnostics: serde_json::from_str(&r.get::<_, String>(17)?)
+                .unwrap_or(serde_json::json!({})),
             score: None,
             labels: Vec::new(),
         })

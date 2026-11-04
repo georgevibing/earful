@@ -52,7 +52,7 @@ fn project_prop() -> Value {
 fn filter_props(default_status: &str) -> Map<String, Value> {
     let props = json!({
         "project": { "type": "string", "description": "Restrict to one project: id or slug. Omit for all projects." },
-        "kind": { "type": "string", "enum": ["bug", "feedback"], "description": "Restrict to bug reports or general feedback." },
+        "kind": { "type": "string", "enum": ["bug", "feedback", "crash", "exception", "log"], "description": "Restrict to bug reports or general feedback." },
         "label_ids": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "maxItems": 20, "description": "Filter by project-scoped label ids from list_labels. Combines with text, status, project and date filters." },
         "label_match": { "type": "string", "enum": ["all", "any"], "description": "all (default) requires every selected label; any requires at least one." },
         "unlabeled": { "type": "boolean", "description": "Only feedback without labels. Cannot be combined with label_ids." },
@@ -363,11 +363,12 @@ fn defs() -> Vec<ToolDef> {
             input: schema(
                 json!({
                     "project": project_prop(),
-                    "kind": { "type": "string", "enum": ["bug", "feedback"] },
+                    "kind": { "type": "string", "enum": ["bug", "feedback", "crash", "exception", "log"] },
                     "body": { "type": "string", "minLength": 3, "maxLength": 10000, "description": "The report itself. Keep the reporter's words." },
                     "title": { "type": "string", "maxLength": 200, "description": "Short summary. Derived from the first line of body when omitted." },
                     "contact": { "type": "string", "maxLength": 200, "description": "How to reach the reporter, if known." },
                     "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+                    "diagnostics": { "type": "object", "description": "Crash/exception/log context, max 65536 UTF-8 bytes. Suggested keys: stack_trace, logs (bounded tail), exception_type, version, build_id, platform, occurred_at, session_id, context. Redact secrets and personal data before submission." },
                     "meta": { "type": "object", "description": "Extra context, e.g. {\"version\": \"1.2.3\", \"platform\": \"steam-deck\", \"origin\": \"discord\"}. Max 4 KB." },
                     "status": { "type": "string", "enum": crate::models::STATUSES, "description": "Default new." },
                     "admin_note": { "type": "string", "maxLength": 10000 },
@@ -388,7 +389,7 @@ fn defs() -> Vec<ToolDef> {
                 json!({
                     "id": { "type": "integer" },
                     "status": { "type": "string", "enum": crate::models::STATUSES },
-                    "kind": { "type": "string", "enum": ["bug", "feedback"] },
+                    "kind": { "type": "string", "enum": ["bug", "feedback", "crash", "exception", "log"] },
                     "admin_note": { "type": "string", "maxLength": 10000, "description": "Replaces the private note." },
                     "append_note": { "type": "string", "maxLength": 2000, "description": "Appended to the note as a new dated line. Cannot be combined with admin_note." },
                 }),
@@ -1094,6 +1095,7 @@ async fn run(ctx: &Ctx, name: &str, a: &Args<'_>) -> ToolResult {
                 contact: a.str("contact")?,
                 rating: a.int("rating")?,
                 meta,
+                diagnostics: a.0.get("diagnostics").cloned(),
                 status: a.str("status")?,
                 admin_note: a.str("admin_note")?,
                 created_at: a.time("created_at", false)?,

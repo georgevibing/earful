@@ -35,12 +35,13 @@ Body limit 32 KB (larger bodies get `413`). The body is parsed as JSON regardles
 ```json
 {
   "key": "fhk_...",               // or header X-FH-Key
-  "kind": "bug" | "feedback",
+  "kind": "bug" | "feedback" | "crash" | "exception" | "log",
   "title": "optional, <= 200 chars (derived from body if empty)",
   "body": "required, 3..=10000 chars",
   "contact": "optional, <= 200 chars (email, discord, whatever)",
   "rating": 1,                     // optional 1..=5
   "meta": { "version": "1.2.3" }, // optional JSON object, <= 4096 bytes serialized
+  "diagnostics": { "stack_trace": "...", "logs": "..." }, // optional object, <= 65536 bytes
   "source": "web" | "api",         // optional, default "api"
   "challenge": "<from /challenge>",
   "nonce": "12345",               // decimal string (a JSON number is accepted too)
@@ -52,7 +53,7 @@ Success is always `202 {"ok": true}`, whether the item was stored, merged into a
 exact duplicate, quarantined or silently dropped. Spammers learn nothing.
 
 Errors (legit clients need these): `400 invalid_json`, `400 invalid_<field>` validation
-(`invalid_kind|invalid_body|invalid_title|invalid_contact|invalid_rating|invalid_meta|invalid_source`),
+(`invalid_kind|invalid_body|invalid_title|invalid_contact|invalid_rating|invalid_meta|invalid_diagnostics|invalid_source`),
 `400 challenge_malformed|challenge_invalid|challenge_wrong_project|challenge_expired|challenge_used|pow_insufficient`,
 `404 not_found`, `403 project_paused`, `429 rate_limited`.
 
@@ -166,7 +167,7 @@ Feedback object:
 `new, triaged, resolved, archived, spam`.
 
 - `GET /api/admin/feedback` query params, all optional:
-  - `project_id`, `kind` (`bug|feedback`)
+  - `project_id`, `kind` (`bug|feedback|crash|exception|log`)
   - `status`: `open` (default, new+triaged), `all` (everything except spam), `any` (everything), or a concrete status
   - `q` search text, `mode`: `hybrid` (default) | `fuzzy` | `keyword` | `semantic`
   - `from`, `to` (Unix seconds, inclusive), `limit` (default 50, max 200), `offset`
@@ -237,3 +238,19 @@ stateless). Full guide and tool reference: [`docs/mcp.md`](mcp.md).
 - Tools reuse the admin operations, so validation, side effects and the vector index
   stay identical to the admin API. `create_feedback` is the one MCP-only operation:
   an admin-side insert with `source = "mcp"` that skips PoW, rate limits and spam scoring.
+
+
+## Diagnostic reports
+
+The existing POST /api/v1/feedback and SDK submit accept kind crash, exception and
+log alongside bug and feedback. MCP create_feedback accepts the same kinds and
+diagnostics. An optional diagnostics JSON object holds at most 65536 serialized
+UTF-8 bytes; omitted/null becomes {}. Other types or larger objects return
+invalid_diagnostics. The public request limit is 128 KiB; existing body (3-10000
+characters), meta (4096 bytes), PoW and rate limits still apply.
+
+Diagnostics round-trip through list/detail, MCP and JSON/CSV exports. Filter by
+kind with the existing status/project/label filters. Stats include kind_counts
+excluding spam. The daily chart still shows bugs and feedback only. Search indexes
+title/body, so include the exception signature there. See docs/crash-reporting.md
+in the repository for integration and agent workflows.

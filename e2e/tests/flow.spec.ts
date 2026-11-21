@@ -41,7 +41,7 @@ test('create a project, submit via hosted page, find it with fuzzy search, triag
 
   // Both land in the inbox.
   await page.getByRole('link', { name: 'Feedback', exact: true }).click();
-  await page.getByLabel('Project').selectOption({ label: title });
+  await page.getByLabel('Project', { exact: true }).selectOption({ label: title });
   await expect(page.getByTestId('feedback-row')).toHaveCount(2);
 
   // Fuzzy search tolerates typos.

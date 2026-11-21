@@ -1,6 +1,6 @@
 # Architecture
 
-feedback-harvest is deliberately boring: one process, one SQLite file, no queue, no cache server, no search cluster. Everything below fits in a few MB of RAM for tens of thousands of submissions.
+earful is deliberately boring: one process, one SQLite file, no queue, no cache server, no search cluster. Everything below fits in a few MB of RAM for tens of thousands of submissions.
 
 ## Components
 
@@ -58,8 +58,8 @@ Every public submission passes these layers in order. Each one exists to make a 
 | 4 | Sliding window rate limits on hashed IP: per project per minute, hour, day; global per day; plus a per project hourly cap over all IPs | `429` + `Retry-After` | Stops floods from a single source and caps botnet damage per project. |
 | 5 | Proof of work: HMAC signed, project scoped, expiring challenge; `sha256(challenge:nonce)` must have N leading zero bits; challenge id redeemable once | `400 challenge_*` / `pow_insufficient` | Makes each submission cost CPU time. Adaptive: difficulty grows by one bit per recent submission from the same IP (max +4) and by two bits when the project is above half its hourly cap. Replays are useless. |
 | 6 | Exact duplicate (normalised title + body hash, same project, 24 h) | Same IP: silent drop. Other IP: `dup_count += 1` on the original | Repeated spam disappears; the same bug reported by many players becomes a "+N" signal instead of N rows. |
-| 7 | Minimum fill time (`FH_MIN_FILL_SECS` since the challenge was issued) | Quarantine (`too_fast`) | Scripts submit instantly; humans need time to type. |
-| 8 | Heuristic spam score: link count and density, URL shorteners, link markup, spam phrases, shouting, character runs, repetitive text | Quarantine at `FH_SPAM_THRESHOLD` | Catches the classic link spam that slips through the cheaper layers. |
+| 7 | Minimum fill time (`EARFUL_MIN_FILL_SECS` since the challenge was issued) | Quarantine (`too_fast`) | Scripts submit instantly; humans need time to type. |
+| 8 | Heuristic spam score: link count and density, URL shorteners, link markup, spam phrases, shouting, character runs, repetitive text | Quarantine at `EARFUL_SPAM_THRESHOLD` | Catches the classic link spam that slips through the cheaper layers. |
 | 9 | Near duplicate (after embedding): cosine >= 0.95 with another submission from the same IP in the same project within 24 h | Quarantine (`near_duplicate`) | Catches paraphrased or lightly mutated repeats. |
 
 **Quarantine instead of reject.** Soft signals (7, 8, 9) store the item with `status = spam` and a `spam_reason`, visible in the admin Spam tab where it can be restored. False positives are never lost, and the response is identical to a clean submission (`202 {"ok": true}`), so an attacker cannot probe which rule fired. Hard failures that a legit client must react to (validation, rate limit, invalid challenge) return explicit errors.
@@ -103,7 +103,7 @@ Known limits, accepted for a personal tool:
 
 - **Botnets** with many IPs and real CPUs can still trickle in submissions. Proof of work and the per-project hourly cap bound the damage; the quarantine view and bulk actions handle the rest. If a project gets targeted, pause it or rotate its key.
 - **Ingest keys are public by design.** They identify a project, they do not authenticate a client. Anything shipped to users (game binaries, web pages) can be extracted, so nothing secret goes into them.
-- **IP based limits** are coarse: users behind CGNAT or one office share a budget, and IPv6 is limited per /64. Behind a proxy, `FH_TRUSTED_PROXY_HOPS` must match the real proxy chain or every user collapses onto the proxy's address (or, if set too high, clients can spoof their IP).
+- **IP based limits** are coarse: users behind CGNAT or one office share a budget, and IPv6 is limited per /64. Behind a proxy, `EARFUL_TRUSTED_PROXY_HOPS` must match the real proxy chain or every user collapses onto the proxy's address (or, if set too high, clients can spoof their IP).
 - **Single admin**, single password, no MFA. Put the admin UI behind an additional gate (VPN, Tailscale, Cloudflare Access) if that matters to you.
 - **Embedding providers** see the feedback text. `model2vec` and `hash` run in process and never send data anywhere; for `openai`, prefer a self-hosted Ollama to keep data on your box.
 - **Model2Vec quality** is good for short, single language feedback but below transformer models on long or subtle text, and potion-base-8M is English first. Switch to an OpenAI compatible provider if that matters.

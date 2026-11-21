@@ -29,7 +29,7 @@ pub const SUPPORTED_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-2
 pub const FALLBACK_VERSION: &str = "2025-06-18";
 
 const INSTRUCTIONS: &str = "\
-feedback-harvest stores feedback and bug reports for the owner's projects (games, web apps, services).
+earful stores feedback and bug reports for the owner's projects (games, web apps, services).
 
 Domain:
 - A project has an id, a slug (use either to reference it), a type, a description and a public ingest key that clients embed. Pausing a project (accepting=false) stops new submissions.
@@ -96,7 +96,7 @@ fn unauthorized(message: &str) -> Response {
         .into_response();
     resp.headers_mut().insert(
         header::WWW_AUTHENTICATE,
-        HeaderValue::from_static("Bearer realm=\"feedback-harvest\""),
+        HeaderValue::from_static("Bearer realm=\"earful\""),
     );
     resp
 }
@@ -137,7 +137,7 @@ pub async fn handle(
     let token = match tokens::authenticate(&state, authorization, &ip).await {
         Err(e) => return e.into_response(),
         Ok(Err(BearerError::Missing)) => {
-            return unauthorized("missing bearer token (Authorization: Bearer fht_...)");
+            return unauthorized("missing bearer token (Authorization: Bearer eat_...)");
         }
         Ok(Err(BearerError::Invalid)) => return unauthorized("invalid or revoked token"),
         Ok(Err(BearerError::RateLimited(retry_after))) => {
@@ -286,8 +286,8 @@ fn initialize(params: &Value) -> Value {
             "prompts": { "listChanged": false },
         },
         "serverInfo": {
-            "name": "feedback-harvest",
-            "title": "Feedback Harvest",
+            "name": "earful",
+            "title": "Earful",
             "version": env!("CARGO_PKG_VERSION"),
         },
         "instructions": INSTRUCTIONS,

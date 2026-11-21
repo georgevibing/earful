@@ -53,7 +53,7 @@ async fn admin_index_carries_brand_meta() {
     let r = app.get("/admin/").anonymous().send().await;
     assert_eq!(r.status, StatusCode::OK);
     for needle in [
-        "<title>Feedback Harvest</title>",
+        "<title>Earful</title>",
         "name=\"description\"",
         "rel=\"manifest\"",
         "noindex, nofollow",
@@ -63,7 +63,7 @@ async fn admin_index_carries_brand_meta() {
     }
     let manifest = app.get("/admin/site.webmanifest").anonymous().send().await;
     assert_eq!(manifest.status, StatusCode::OK);
-    assert!(manifest.text.contains("\"name\": \"Feedback Harvest\""));
+    assert!(manifest.text.contains("\"name\": \"Earful\""));
 }
 
 #[tokio::test]
@@ -77,9 +77,7 @@ async fn hosted_page_has_title_description_and_social_meta() {
     assert_eq!(r.status, StatusCode::OK);
     let t = &r.text;
     assert!(
-        t.contains(
-            "<title>Send feedback: Star &quot;Quest&quot; &lt;II&gt; | Feedback Harvest</title>"
-        ),
+        t.contains("<title>Send feedback: Star &quot;Quest&quot; &lt;II&gt; | Earful</title>"),
         "{t}"
     );
     // Whitespace in the description is collapsed and escaped.
@@ -93,7 +91,7 @@ async fn hosted_page_has_title_description_and_social_meta() {
     assert!(t.contains("<meta name=\"robots\" content=\"noindex, nofollow\">"));
     assert!(t.contains("rel=\"icon\" href=\"/favicon.svg\""));
     assert!(t.contains("name=\"theme-color\""));
-    assert!(t.contains("Powered by Feedback Harvest"));
+    assert!(t.contains("Powered by Earful"));
 
     // Without a description a sensible default is used.
     app.post("/api/admin/projects")
@@ -108,9 +106,5 @@ async fn hosted_page_has_title_description_and_social_meta() {
 
     let missing = app.get("/s/missing").anonymous().send().await;
     assert_eq!(missing.status, StatusCode::NOT_FOUND);
-    assert!(
-        missing
-            .text
-            .contains("<title>Not found | Feedback Harvest</title>")
-    );
+    assert!(missing.text.contains("<title>Not found | Earful</title>"));
 }

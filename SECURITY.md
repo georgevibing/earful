@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-This is a personal project maintained by one person. If you find a security problem, please report it privately through a [GitHub security advisory](https://github.com/georgevibing/feedback-harvest/security/advisories/new) instead of opening a public issue. Include steps to reproduce and the version or commit you tested. You will get a reply as soon as I can manage, usually within a few days.
+This is a personal project maintained by one person. If you find a security problem, please report it privately through a [GitHub security advisory](https://github.com/georgevibing/earful/security/advisories/new) instead of opening a public issue. Include steps to reproduce and the version or commit you tested. You will get a reply as soon as I can manage, usually within a few days.
 
 ## Supported versions
 
@@ -10,7 +10,7 @@ Only the latest commit on `main` is supported.
 
 ## Security model
 
-feedback-harvest has two audiences with very different trust levels.
+earful has two audiences with very different trust levels.
 
 **Anonymous submitters.** The ingestion API (`/api/v1/*`, `/s/<slug>`, `/widget.js`) is intentionally unauthenticated, because players and users without accounts are its audience. Ingest keys ship inside clients and are public by design; they scope requests to a project and can be rotated, but they are not credentials. Abuse is handled by layered anti-spam: rate limits, adaptive proof of work, single-use signed challenges, a honeypot, a minimum fill time, duplicate detection and heuristics. Raw IP addresses are never stored, only keyed HMAC pseudonyms.
 

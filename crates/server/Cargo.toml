@@ -1,5 +1,5 @@
 [package]
-name = "feedback-harvest"
+name = "earful"
 version = "0.1.0"
 edition = "2024"
 description = "Tiny self-hosted feedback and bug report collector with anti-spam and hybrid search"
@@ -7,11 +7,11 @@ license = "MIT"
 publish = false
 
 [lib]
-name = "feedback_harvest"
+name = "earful"
 path = "src/lib.rs"
 
 [[bin]]
-name = "feedback-harvest"
+name = "earful"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,6 +1,6 @@
 import type { Route } from './router';
 
-export const BRAND = 'Feedback Harvest';
+export const BRAND = 'Earful';
 
 /** Public URL of the logo mark (served from `public/`, respects Vite's base). */
 export const LOGO_URL = `${import.meta.env.BASE_URL}logo.svg`;

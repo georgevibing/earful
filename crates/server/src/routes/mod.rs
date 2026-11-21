@@ -32,7 +32,10 @@ pub fn build_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, HeaderName::from_static("x-fh-key")]);
+        .allow_headers([
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-earful-key"),
+        ]);
 
     let v1 = Router::new()
         .route("/challenge", get(public::challenge))

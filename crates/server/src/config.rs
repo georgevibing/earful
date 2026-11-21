@@ -1,4 +1,4 @@
-//! Runtime configuration, read once from `FH_*` environment variables.
+//! Runtime configuration, read once from `EARFUL_*` environment variables.
 
 use std::{
     net::SocketAddr,
@@ -80,7 +80,7 @@ pub fn model2vec_present(dir: &Path) -> bool {
     MODEL2VEC_FILES.iter().all(|f| dir.join(f).is_file())
 }
 
-/// Resolves the embedding provider from `FH_EMBED_*` variables. `lookup` is
+/// Resolves the embedding provider from `EARFUL_EMBED_*` variables. `lookup` is
 /// the environment (injected so tests do not touch the process env).
 pub fn embed_config_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<EmbedConfig> {
     let get = |key: &str| {
@@ -88,28 +88,28 @@ pub fn embed_config_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<Embe
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    let dim = match get("FH_EMBED_DIM") {
+    let dim = match get("EARFUL_EMBED_DIM") {
         Some(v) => v
             .parse()
-            .map_err(|e| anyhow::anyhow!("invalid value for FH_EMBED_DIM: {e}"))?,
+            .map_err(|e| anyhow::anyhow!("invalid value for EARFUL_EMBED_DIM: {e}"))?,
         None => 384,
     };
     let model2vec = || -> Result<EmbedConfig> {
         Ok(EmbedConfig::Model2Vec {
-            path: get("FH_EMBED_MODEL_PATH")
+            path: get("EARFUL_EMBED_MODEL_PATH")
                 .unwrap_or_else(|| DEFAULT_MODEL2VEC_PATH.into())
                 .into(),
-            repo: get("FH_EMBED_MODEL").unwrap_or_else(|| DEFAULT_MODEL2VEC_REPO.into()),
-            auto_download: match get("FH_EMBED_AUTO_DOWNLOAD") {
+            repo: get("EARFUL_EMBED_MODEL").unwrap_or_else(|| DEFAULT_MODEL2VEC_REPO.into()),
+            auto_download: match get("EARFUL_EMBED_AUTO_DOWNLOAD") {
                 Some(v) => v.parse().map_err(|e| {
-                    anyhow::anyhow!("invalid value for FH_EMBED_AUTO_DOWNLOAD: {e}")
+                    anyhow::anyhow!("invalid value for EARFUL_EMBED_AUTO_DOWNLOAD: {e}")
                 })?,
                 None => false,
             },
         })
     };
     Ok(
-        match get("FH_EMBED_PROVIDER").as_deref().unwrap_or("auto") {
+        match get("EARFUL_EMBED_PROVIDER").as_deref().unwrap_or("auto") {
             "none" | "disabled" => EmbedConfig::Disabled,
             "hash" => EmbedConfig::Hash { dim },
             "model2vec" => model2vec()?,
@@ -118,27 +118,27 @@ pub fn embed_config_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<Embe
                     tracing::info!(
                         path = %path.display(),
                         "no Model2Vec model found, using the lexical hash embedder \
-                         (run `feedback-harvest download-model` for semantic search)"
+                         (run `earful download-model` for semantic search)"
                     );
                     EmbedConfig::Hash { dim }
                 }
                 cfg => cfg,
             },
             "openai" => EmbedConfig::OpenAi {
-                url: get("FH_EMBED_URL").unwrap_or_else(|| "https://api.openai.com/v1".into()),
-                model: get("FH_EMBED_MODEL").unwrap_or_else(|| "text-embedding-3-small".into()),
-                api_key: match get("FH_EMBED_API_KEY_FILE") {
+                url: get("EARFUL_EMBED_URL").unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                model: get("EARFUL_EMBED_MODEL").unwrap_or_else(|| "text-embedding-3-small".into()),
+                api_key: match get("EARFUL_EMBED_API_KEY_FILE") {
                     Some(path) => Some(
                         std::fs::read_to_string(&path)
-                            .with_context(|| format!("reading FH_EMBED_API_KEY_FILE {path}"))?
+                            .with_context(|| format!("reading EARFUL_EMBED_API_KEY_FILE {path}"))?
                             .trim()
                             .to_string(),
                     ),
-                    None => get("FH_EMBED_API_KEY"),
+                    None => get("EARFUL_EMBED_API_KEY"),
                 },
             },
             other => anyhow::bail!(
-                "unknown FH_EMBED_PROVIDER {other:?} (use auto, model2vec, hash, openai or none)"
+                "unknown EARFUL_EMBED_PROVIDER {other:?} (use auto, model2vec, hash, openai or none)"
             ),
         },
     )
@@ -198,63 +198,63 @@ impl Config {
         let limits_default = Limits::default();
         let pow_default = PowConfig::default();
 
-        let admin_password_hash = match env("FH_ADMIN_PASSWORD_HASH_FILE") {
+        let admin_password_hash = match env("EARFUL_ADMIN_PASSWORD_HASH_FILE") {
             Some(path) => Some(
                 std::fs::read_to_string(&path)
-                    .with_context(|| format!("reading FH_ADMIN_PASSWORD_HASH_FILE {path}"))?
+                    .with_context(|| format!("reading EARFUL_ADMIN_PASSWORD_HASH_FILE {path}"))?
                     .trim()
                     .to_string(),
             ),
-            None => env("FH_ADMIN_PASSWORD_HASH"),
+            None => env("EARFUL_ADMIN_PASSWORD_HASH"),
         }
         .filter(|s| !s.is_empty());
 
-        let embed = embed_config_from(&|key| std::env::var(key).ok())?;
+        let embed = embed_config_from(&var)?;
 
         Ok(Self {
-            bind: parse_or("FH_BIND", "127.0.0.1:8080".parse()?)?,
-            database_path: env("FH_DATABASE_PATH")
-                .unwrap_or_else(|| "feedback-harvest.db".into())
+            bind: parse_or("EARFUL_BIND", "127.0.0.1:8080".parse()?)?,
+            database_path: env("EARFUL_DATABASE_PATH")
+                .unwrap_or_else(|| "earful.db".into())
                 .into(),
             admin_password_hash,
-            session_ttl_hours: parse_or("FH_SESSION_TTL_HOURS", 24 * 7)?,
-            cookie_secure: parse_or("FH_COOKIE_SECURE", true)?,
-            trusted_proxy_hops: parse_or("FH_TRUSTED_PROXY_HOPS", 0)?,
+            session_ttl_hours: parse_or("EARFUL_SESSION_TTL_HOURS", 24 * 7)?,
+            cookie_secure: parse_or("EARFUL_COOKIE_SECURE", true)?,
+            trusted_proxy_hops: parse_or("EARFUL_TRUSTED_PROXY_HOPS", 0)?,
             limits: Limits {
                 per_ip_project_minute: parse_or(
-                    "FH_LIMIT_IP_PROJECT_MINUTE",
+                    "EARFUL_LIMIT_IP_PROJECT_MINUTE",
                     limits_default.per_ip_project_minute,
                 )?,
                 per_ip_project_hour: parse_or(
-                    "FH_LIMIT_IP_PROJECT_HOUR",
+                    "EARFUL_LIMIT_IP_PROJECT_HOUR",
                     limits_default.per_ip_project_hour,
                 )?,
                 per_ip_project_day: parse_or(
-                    "FH_LIMIT_IP_PROJECT_DAY",
+                    "EARFUL_LIMIT_IP_PROJECT_DAY",
                     limits_default.per_ip_project_day,
                 )?,
                 per_ip_global_day: parse_or(
-                    "FH_LIMIT_IP_GLOBAL_DAY",
+                    "EARFUL_LIMIT_IP_GLOBAL_DAY",
                     limits_default.per_ip_global_day,
                 )?,
                 per_project_hour: parse_or(
-                    "FH_LIMIT_PROJECT_HOUR",
+                    "EARFUL_LIMIT_PROJECT_HOUR",
                     limits_default.per_project_hour,
                 )?,
                 challenges_per_ip_hour: parse_or(
-                    "FH_LIMIT_CHALLENGES_IP_HOUR",
+                    "EARFUL_LIMIT_CHALLENGES_IP_HOUR",
                     limits_default.challenges_per_ip_hour,
                 )?,
                 logins_per_ip_window: limits_default.logins_per_ip_window,
                 login_window_secs: limits_default.login_window_secs,
-                min_fill_secs: parse_or("FH_MIN_FILL_SECS", limits_default.min_fill_secs)?,
-                spam_threshold: parse_or("FH_SPAM_THRESHOLD", limits_default.spam_threshold)?,
+                min_fill_secs: parse_or("EARFUL_MIN_FILL_SECS", limits_default.min_fill_secs)?,
+                spam_threshold: parse_or("EARFUL_SPAM_THRESHOLD", limits_default.spam_threshold)?,
             },
             pow: PowConfig {
-                base_bits: parse_or("FH_POW_BITS", pow_default.base_bits)?,
-                max_bits: parse_or("FH_POW_MAX_BITS", pow_default.max_bits)?,
+                base_bits: parse_or("EARFUL_POW_BITS", pow_default.base_bits)?,
+                max_bits: parse_or("EARFUL_POW_MAX_BITS", pow_default.max_bits)?,
                 challenge_ttl_secs: parse_or(
-                    "FH_CHALLENGE_TTL_SECS",
+                    "EARFUL_CHALLENGE_TTL_SECS",
                     pow_default.challenge_ttl_secs,
                 )?,
             },
@@ -264,7 +264,29 @@ impl Config {
 }
 
 fn env(key: &str) -> Option<String> {
-    std::env::var(key).ok().map(|v| v.trim().to_string())
+    var(key).map(|v| v.trim().to_string())
+}
+
+/// Reads an `EARFUL_*` variable. Deployments from before the rename may still
+/// set the old `FH_*` name; an explicitly set legacy name wins, so an image
+/// default for the new name can never silently override an existing setting.
+pub fn var(key: &str) -> Option<String> {
+    if let Some(rest) = key.strip_prefix("EARFUL_")
+        && let Ok(v) = std::env::var(format!("FH_{rest}"))
+    {
+        return Some(v);
+    }
+    std::env::var(key).ok()
+}
+
+/// Names of legacy `FH_*` variables still set in the environment.
+pub fn legacy_vars_in_use() -> Vec<String> {
+    let mut keys: Vec<String> = std::env::vars()
+        .map(|(k, _)| k)
+        .filter(|k| k.starts_with("FH_"))
+        .collect();
+    keys.sort();
+    keys
 }
 
 fn parse_or<T>(key: &str, default: T) -> Result<T>
@@ -304,11 +326,12 @@ mod tests {
 
     #[test]
     fn auto_falls_back_to_hash_without_a_model() {
-        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", "/definitely/not/here")]).unwrap();
+        let cfg = resolve(&[("EARFUL_EMBED_MODEL_PATH", "/definitely/not/here")]).unwrap();
         assert!(matches!(cfg, EmbedConfig::Hash { dim: 384 }));
         let partial = tempfile::tempdir().unwrap();
         std::fs::write(partial.path().join("config.json"), b"{}").unwrap();
-        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", partial.path().to_str().unwrap())]).unwrap();
+        let cfg =
+            resolve(&[("EARFUL_EMBED_MODEL_PATH", partial.path().to_str().unwrap())]).unwrap();
         assert!(
             matches!(cfg, EmbedConfig::Hash { .. }),
             "incomplete model dirs are ignored"
@@ -318,7 +341,7 @@ mod tests {
     #[test]
     fn auto_picks_model2vec_when_the_model_exists() {
         let dir = fake_model_dir();
-        let cfg = resolve(&[("FH_EMBED_MODEL_PATH", dir.path().to_str().unwrap())]).unwrap();
+        let cfg = resolve(&[("EARFUL_EMBED_MODEL_PATH", dir.path().to_str().unwrap())]).unwrap();
         match cfg {
             EmbedConfig::Model2Vec {
                 path,
@@ -336,20 +359,24 @@ mod tests {
     #[test]
     fn explicit_providers_parse() {
         assert!(matches!(
-            resolve(&[("FH_EMBED_PROVIDER", "none")]).unwrap(),
+            resolve(&[("EARFUL_EMBED_PROVIDER", "none")]).unwrap(),
             EmbedConfig::Disabled
         ));
         assert!(matches!(
-            resolve(&[("FH_EMBED_PROVIDER", "hash"), ("FH_EMBED_DIM", "128")]).unwrap(),
+            resolve(&[
+                ("EARFUL_EMBED_PROVIDER", "hash"),
+                ("EARFUL_EMBED_DIM", "128")
+            ])
+            .unwrap(),
             EmbedConfig::Hash { dim: 128 }
         ));
         // Explicit model2vec keeps the config even when the model is missing,
         // so startup can fail loudly instead of silently degrading.
         match resolve(&[
-            ("FH_EMBED_PROVIDER", "model2vec"),
-            ("FH_EMBED_MODEL_PATH", "/nope"),
-            ("FH_EMBED_MODEL", "minishlab/potion-retrieval-32M"),
-            ("FH_EMBED_AUTO_DOWNLOAD", "true"),
+            ("EARFUL_EMBED_PROVIDER", "model2vec"),
+            ("EARFUL_EMBED_MODEL_PATH", "/nope"),
+            ("EARFUL_EMBED_MODEL", "minishlab/potion-retrieval-32M"),
+            ("EARFUL_EMBED_AUTO_DOWNLOAD", "true"),
         ])
         .unwrap()
         {
@@ -364,7 +391,12 @@ mod tests {
             }
             other => panic!("expected model2vec, got {other:?}"),
         }
-        match resolve(&[("FH_EMBED_PROVIDER", "openai"), ("FH_EMBED_API_KEY", "k")]).unwrap() {
+        match resolve(&[
+            ("EARFUL_EMBED_PROVIDER", "openai"),
+            ("EARFUL_EMBED_API_KEY", "k"),
+        ])
+        .unwrap()
+        {
             EmbedConfig::OpenAi {
                 url,
                 model,
@@ -380,12 +412,12 @@ mod tests {
 
     #[test]
     fn rejects_bad_values() {
-        assert!(resolve(&[("FH_EMBED_PROVIDER", "magic")]).is_err());
-        assert!(resolve(&[("FH_EMBED_DIM", "big")]).is_err());
+        assert!(resolve(&[("EARFUL_EMBED_PROVIDER", "magic")]).is_err());
+        assert!(resolve(&[("EARFUL_EMBED_DIM", "big")]).is_err());
         assert!(
             resolve(&[
-                ("FH_EMBED_PROVIDER", "model2vec"),
-                ("FH_EMBED_AUTO_DOWNLOAD", "yes")
+                ("EARFUL_EMBED_PROVIDER", "model2vec"),
+                ("EARFUL_EMBED_AUTO_DOWNLOAD", "yes")
             ])
             .is_err()
         );

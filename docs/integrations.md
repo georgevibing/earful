@@ -12,7 +12,7 @@ For web pages, the easiest options are the hosted page (`https://<host>/s/<slug>
 
    ```json
    {
-     "key": "fhk_...",
+     "key": "ear_...",
      "kind": "bug",
      "title": "Crash when opening inventory",
      "body": "Pressed I during the boss fight, game closed.",
@@ -26,7 +26,7 @@ For web pages, the easiest options are the hosted page (`https://<host>/s/<slug>
    `kind` is `bug` or `feedback`. `title`, `contact`, `rating` (1 to 5) and `meta` (JSON object, max 4 KB) are optional; `body` needs 3 to 10000 characters.
 4. **Success is `202 {"ok": true}`**. Nothing else to read.
 
-Each challenge works once and is bound to its project. Submissions sent less than `FH_MIN_FILL_SECS` (default 2 seconds) after the challenge was issued are quarantined as `too_fast`, so fetch the challenge when the form opens, not when the user presses send.
+Each challenge works once and is bound to its project. Submissions sent less than `EARFUL_MIN_FILL_SECS` (default 2 seconds) after the challenge was issued are quarantined as `too_fast`, so fetch the challenge when the form opens, not when the user presses send.
 
 ### Error handling
 
@@ -51,14 +51,14 @@ Each challenge works once and is bound to its project. Submissions sent less tha
 
 ```sh
 HOST=https://feedback.example.com
-KEY=fhk_your_ingest_key
+KEY=ear_your_ingest_key
 
 CH=$(curl -fsS "$HOST/api/v1/challenge?key=$KEY")
 CHALLENGE=$(echo "$CH" | jq -r .challenge)
 BITS=$(echo "$CH" | jq -r .bits)
 
-# Reference solver built into the server binary (or: docker run --rm feedback-harvest:local solve ...)
-NONCE=$(feedback-harvest solve "$CHALLENGE" "$BITS")
+# Reference solver built into the server binary (or: docker run --rm earful:local solve ...)
+NONCE=$(earful solve "$CHALLENGE" "$BITS")
 sleep 2   # minimum fill time
 
 jq -n --arg key "$KEY" --arg challenge "$CHALLENGE" --arg nonce "$NONCE" '{
@@ -83,7 +83,7 @@ using UnityEngine.Networking;
 public class FeedbackClient : MonoBehaviour
 {
     const string Endpoint = "https://feedback.example.com";
-    const string IngestKey = "fhk_your_ingest_key";
+    const string IngestKey = "ear_your_ingest_key";
 
     [Serializable] class ChallengeResponse { public string challenge; public int bits; public int expires_in; }
     [Serializable] class Meta { public string version; public string platform; }
@@ -161,7 +161,7 @@ public class FeedbackClient : MonoBehaviour
 extends Node
 
 const ENDPOINT := "https://feedback.example.com"
-const INGEST_KEY := "fhk_your_ingest_key"
+const INGEST_KEY := "ear_your_ingest_key"
 
 var _challenge := ""
 var _nonce := ""
@@ -275,7 +275,7 @@ import urllib.parse
 import urllib.request
 
 ENDPOINT = "https://feedback.example.com"
-KEY = "fhk_your_ingest_key"
+KEY = "ear_your_ingest_key"
 
 
 def leading_zero_bits(digest: bytes) -> int:

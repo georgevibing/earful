@@ -16,9 +16,9 @@ Issues a single use proof of work challenge. `Cache-Control: no-store`.
 
 Errors: `404 not_found` (unknown key), `403 project_paused`, `429 rate_limited`.
 
-Difficulty is adaptive: base `FH_POW_BITS` (18) plus one bit per submission the
+Difficulty is adaptive: base `EARFUL_POW_BITS` (18) plus one bit per submission the
 same IP sent to this project in the last hour (max +4), plus 2 when the project is
-above half its hourly cap, clamped to `FH_POW_MAX_BITS`.
+above half its hourly cap, clamped to `EARFUL_POW_MAX_BITS`.
 
 **Solving:** find the smallest decimal string `nonce` (any works, the reference
 solver counts up from 0) such that `sha256(utf8(challenge + ":" + nonce))` has at
@@ -34,7 +34,7 @@ Body limit 32 KB (larger bodies get `413`). The body is parsed as JSON regardles
 
 ```json
 {
-  "key": "fhk_...",               // or header X-FH-Key
+  "key": "ear_...",               // or header X-Earful-Key
   "kind": "bug" | "feedback" | "crash" | "exception" | "log",
   "title": "optional, <= 200 chars (derived from body if empty)",
   "body": "required, 3..=10000 chars",
@@ -79,7 +79,7 @@ Embeddable widget bundle (IIFE). See `packages/widget/README.md`.
 
 `200 {"ok": true}`.
 
-## Admin (`/api/admin`, session cookie `fh_session`, HttpOnly, SameSite=Strict)
+## Admin (`/api/admin`, session cookie `earful_session`, HttpOnly, SameSite=Strict)
 
 Every non-GET admin request with an `Origin` header must match `Host`, else
 `403 bad_origin`. Missing or expired session gives `401 unauthorized`.
@@ -96,7 +96,7 @@ Project object:
 
 ```json
 { "id": 1, "slug": "my-game", "title": "My Game", "project_type": "game",
-  "description": "", "ingest_key": "fhk_...", "accepting": true,
+  "description": "", "ingest_key": "ear_...", "accepting": true,
   "created_at": 0, "updated_at": 0,
   "stats": { "total": 0, "open": 0, "new": 0, "bugs": 0, "feedback": 0, "spam": 0, "last_at": null } }
 ```
@@ -200,10 +200,10 @@ Feedback object:
 Admin-issued bearer tokens. Only `sha256(token)` is stored; the raw token is shown once.
 `scope` is `read` (list/get/search/stats/export) or `write` (everything, including deletes).
 
-Token object: `{ "id": 1, "name": "claude-code laptop", "scope": "write", "prefix": "fht_ab12", "created_at": 0, "last_used_at": null }`
+Token object: `{ "id": 1, "name": "claude-code laptop", "scope": "write", "prefix": "eat_ab12", "created_at": 0, "last_used_at": null }`
 
 - `GET /api/admin/tokens` gives `200 [Token]` newest first.
-- `POST /api/admin/tokens` `{ "name": "...", "scope": "read" | "write" }` gives `201 { "token": "fht_<64 hex>", ...Token }`. `400 invalid_name|invalid_scope`.
+- `POST /api/admin/tokens` `{ "name": "...", "scope": "read" | "write" }` gives `201 { "token": "eat_<64 hex>", ...Token }`. `400 invalid_name|invalid_scope`.
 - `DELETE /api/admin/tokens/:id` gives `204` (revokes immediately).
 
 ## MCP (`/mcp`)
@@ -214,8 +214,8 @@ stateless). Full guide and tool reference: [`docs/mcp.md`](mcp.md).
 - `POST /mcp` takes one JSON-RPC 2.0 message or a batch. Body limit 1 MB.
   Requests get `200` with the JSON-RPC response (an array for batches); a body of only
   notifications gets `202` with no body.
-- `Authorization: Bearer fht_...` is required. Missing, unknown or revoked tokens get
-  `401` with `WWW-Authenticate: Bearer realm="feedback-harvest"`. After 20 failed
+- `Authorization: Bearer eat_...` is required. Missing, unknown or revoked tokens get
+  `401` with `WWW-Authenticate: Bearer realm="earful"`. After 20 failed
   attempts from one IP in 15 minutes every request from that IP gets `429` until the
   window passes.
 - A present `Origin` header must match `Host` (DNS rebinding defence), else `403 bad_origin`.

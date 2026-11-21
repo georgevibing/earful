@@ -1,5 +1,5 @@
 /**
- * Minimal client for the feedback-harvest ingestion API (see docs/api.md).
+ * Minimal client for the earful ingestion API (see docs/api.md).
  * Handles challenge fetching, proof of work and one retry on stale challenges.
  */
 import { solve } from './pow';
@@ -21,9 +21,9 @@ export interface FeedbackInput {
 }
 
 export interface ClientOptions {
-  /** Base URL of the feedback-harvest server, e.g. `https://feedback.example.com`. */
+  /** Base URL of the earful server, e.g. `https://feedback.example.com`. */
   endpoint: string;
-  /** The project's public ingest key (`fhk_...`). */
+  /** The project's public ingest key (`ear_...`). */
   key: string;
   fetch?: typeof fetch;
   /** Clock override for tests. */
@@ -37,8 +37,8 @@ export interface FeedbackClient {
   submit(input: FeedbackInput): Promise<void>;
 }
 
-export class FeedbackHarvestError extends Error {
-  override readonly name = 'FeedbackHarvestError';
+export class EarfulError extends Error {
+  override readonly name = 'EarfulError';
   constructor(
     /** Stable server error code, or `network` / `invalid_response` for client side failures. */
     readonly code: string,
@@ -68,7 +68,7 @@ interface Solution {
 const EXPIRY_MARGIN_MS = 30_000;
 const RETRYABLE = new Set(['challenge_used', 'challenge_expired']);
 
-async function toError(res: Response): Promise<FeedbackHarvestError> {
+async function toError(res: Response): Promise<EarfulError> {
   let code = 'http_error';
   let message = `Request failed with status ${res.status}`;
   try {
@@ -83,7 +83,7 @@ async function toError(res: Response): Promise<FeedbackHarvestError> {
   }
   const header = res.headers.get('retry-after');
   const retryAfter = header !== null && /^\d+$/.test(header.trim()) ? Number(header) : undefined;
-  return new FeedbackHarvestError(code, message, res.status, retryAfter);
+  return new EarfulError(code, message, res.status, retryAfter);
 }
 
 export function createClient(options: ClientOptions): FeedbackClient {
@@ -96,7 +96,7 @@ export function createClient(options: ClientOptions): FeedbackClient {
     try {
       return await doFetch(url, init);
     } catch (err) {
-      throw new FeedbackHarvestError('network', err instanceof Error ? err.message : 'Network error', 0);
+      throw new EarfulError('network', err instanceof Error ? err.message : 'Network error', 0);
     }
   }
 
@@ -109,7 +109,7 @@ export function createClient(options: ClientOptions): FeedbackClient {
     if (!res.ok) throw await toError(res);
     const data = (await res.json()) as Partial<ChallengeResponse>;
     if (typeof data.challenge !== 'string' || typeof data.bits !== 'number') {
-      throw new FeedbackHarvestError('invalid_response', 'Malformed challenge response', res.status);
+      throw new EarfulError('invalid_response', 'Malformed challenge response', res.status);
     }
     const issuedAt = now();
     const nonce = await solve(data.challenge, data.bits);

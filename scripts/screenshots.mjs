@@ -18,11 +18,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(root, 'e2e', 'package.json'));
 const { chromium } = require('@playwright/test');
 
-const binary = process.env.FH_BINARY ?? join(root, 'target', 'debug', 'feedback-harvest');
+const binary = process.env.EARFUL_BINARY ?? join(root, 'target', 'debug', 'earful');
 if (!existsSync(binary)) throw new Error(`missing ${binary}; run \`pnpm build:web && cargo build\``);
 
 const PASSWORD = 'demo-password-123';
-const PORT = Number(process.env.FH_SCREENSHOT_PORT ?? 18_123);
+const PORT = Number(process.env.EARFUL_SCREENSHOT_PORT ?? 18_123);
 const BASE = `http://127.0.0.1:${PORT}`;
 // The browser sees a realistic public host; Playwright proxies it to loopback,
 // so snippets in the UI show a real looking URL instead of 127.0.0.1.
@@ -31,22 +31,22 @@ const DEMO_SITE_URL = 'https://app.ledgerly.example/';
 const OUT = join(root, 'docs', 'assets');
 mkdirSync(OUT, { recursive: true });
 
-const dir = mkdtempSync(join(tmpdir(), 'fh-shots-'));
+const dir = mkdtempSync(join(tmpdir(), 'earful-shots-'));
 const hash = execFileSync(binary, ['hash-password'], { input: PASSWORD }).toString().trim();
 const server = spawn(binary, ['serve'], {
   stdio: ['ignore', 'inherit', 'inherit'],
   env: {
     ...process.env,
     RUST_LOG: 'warn',
-    FH_BIND: `127.0.0.1:${PORT}`,
-    FH_DATABASE_PATH: join(dir, 'demo.db'),
-    FH_ADMIN_PASSWORD_HASH: hash,
-    FH_COOKIE_SECURE: 'false',
-    FH_TRUSTED_PROXY_HOPS: '1',
-    FH_POW_BITS: '8',
-    FH_POW_MAX_BITS: '12',
-    FH_MIN_FILL_SECS: '0',
-    FH_EMBED_PROVIDER: 'hash',
+    EARFUL_BIND: `127.0.0.1:${PORT}`,
+    EARFUL_DATABASE_PATH: join(dir, 'demo.db'),
+    EARFUL_ADMIN_PASSWORD_HASH: hash,
+    EARFUL_COOKIE_SECURE: 'false',
+    EARFUL_TRUSTED_PROXY_HOPS: '1',
+    EARFUL_POW_BITS: '8',
+    EARFUL_POW_MAX_BITS: '12',
+    EARFUL_MIN_FILL_SECS: '0',
+    EARFUL_EMBED_PROVIDER: 'hash',
   },
 });
 
@@ -160,7 +160,7 @@ async function capture(browser, scheme, projects) {
       contentType: 'text/html',
       body: DEMO_SITE.replace(
         '__SCRIPT__',
-        `<script src="${PUBLIC}/widget.js" data-fh-key="${projects.ledgerly.ingest_key}" data-fh-project="Ledgerly" defer></script>`,
+        `<script src="${PUBLIC}/widget.js" data-earful-key="${projects.ledgerly.ingest_key}" data-earful-project="Ledgerly" defer></script>`,
       ),
     }),
   );

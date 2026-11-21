@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FeedbackHarvestError, type FeedbackClient, type FeedbackInput } from './client';
+import { EarfulError, type FeedbackClient, type FeedbackInput } from './client';
 import { friendlyError, mount } from './form';
 
 function fakeClient(impl?: (input: FeedbackInput) => Promise<void>) {
@@ -18,7 +18,7 @@ function setup(opts: Partial<Parameters<typeof mount>[1]> = {}) {
   const host = document.createElement('div');
   document.body.append(host);
   const { client, submitted } = fakeClient();
-  const form = mount(host, { key: 'fhk_test', project: 'Space Game', client, ...opts });
+  const form = mount(host, { key: 'ear_test', project: 'Space Game', client, ...opts });
   const root = form.root;
   const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
   const submit = async () => {
@@ -68,13 +68,13 @@ describe('mount', () => {
     expect(hp).toBeTruthy();
     expect(hp.getAttribute('tabindex')).toBe('-1');
     expect(hp.getAttribute('autocomplete')).toBe('off');
-    const wrap = hp.closest('.fh-hp')!;
+    const wrap = hp.closest('.earful-hp')!;
     expect(wrap.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('shows the rating only for feedback', () => {
     const { q } = setup();
-    const rating = q<HTMLFieldSetElement>('fieldset.fh-rating');
+    const rating = q<HTMLFieldSetElement>('fieldset.earful-rating');
     expect(rating.hidden).toBe(false);
     q<HTMLButtonElement>('[data-kind=bug]').click();
     expect(rating.hidden).toBe(true);
@@ -86,7 +86,7 @@ describe('mount', () => {
   it('updates the live counter', () => {
     const { q, type } = setup();
     type('textarea', 'hello');
-    expect(q('.fh-counter').textContent).toBe('5 / 10000');
+    expect(q('.earful-counter').textContent).toBe('5 / 10000');
   });
 
   it('blocks submission when the description is too short', async () => {
@@ -118,10 +118,10 @@ describe('mount', () => {
     expect(submitted[0]!.meta).toMatchObject({ version: '1.2.3', url: expect.any(String), userAgent: expect.any(String) });
     expect(String(submitted[0]!.meta!.url)).not.toMatch(/[?#]/);
     expect(q<HTMLFormElement>('form').hidden).toBe(true);
-    expect(q<HTMLElement>('.fh-success').hidden).toBe(false);
+    expect(q<HTMLElement>('.earful-success').hidden).toBe(false);
     expect(onSuccess).toHaveBeenCalledOnce();
 
-    q<HTMLButtonElement>('.fh-success button').click();
+    q<HTMLButtonElement>('.earful-success button').click();
     expect(q<HTMLFormElement>('form').hidden).toBe(false);
     expect(q<HTMLTextAreaElement>('textarea').value).toBe('');
   });
@@ -140,7 +140,7 @@ describe('mount', () => {
     const host = document.createElement('div');
     document.body.append(host);
     const { client } = fakeClient(async () => {
-      throw new FeedbackHarvestError('rate_limited', 'slow down', 429, 120);
+      throw new EarfulError('rate_limited', 'slow down', 429, 120);
     });
     const form = mount(host, { key: 'k', client });
     const textarea = form.root.querySelector('textarea')!;
@@ -171,11 +171,11 @@ describe('mount', () => {
 
 describe('friendlyError', () => {
   it('maps codes to readable messages', () => {
-    expect(friendlyError(new FeedbackHarvestError('project_paused', '', 403))).toMatch(/not accepting/);
-    expect(friendlyError(new FeedbackHarvestError('network', '', 0))).toMatch(/connection/);
-    expect(friendlyError(new FeedbackHarvestError('pow_insufficient', '', 400))).toMatch(/verify/);
-    expect(friendlyError(new FeedbackHarvestError('invalid_body', 'body too long', 400))).toBe('body too long');
-    expect(friendlyError(new FeedbackHarvestError('rate_limited', '', 429, 1))).toMatch(/1 second\./);
+    expect(friendlyError(new EarfulError('project_paused', '', 403))).toMatch(/not accepting/);
+    expect(friendlyError(new EarfulError('network', '', 0))).toMatch(/connection/);
+    expect(friendlyError(new EarfulError('pow_insufficient', '', 400))).toMatch(/verify/);
+    expect(friendlyError(new EarfulError('invalid_body', 'body too long', 400))).toBe('body too long');
+    expect(friendlyError(new EarfulError('rate_limited', '', 429, 1))).toMatch(/1 second\./);
     expect(friendlyError(new Error('boom'))).toMatch(/Something went wrong/);
   });
 });

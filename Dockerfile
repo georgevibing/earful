@@ -33,7 +33,7 @@ COPY crates/server/Cargo.toml crates/server/
 RUN mkdir -p crates/server/src \
     && echo 'fn main() {}' > crates/server/src/main.rs \
     && echo '' > crates/server/src/lib.rs \
-    && cargo build --release --locked -p feedback-harvest \
+    && cargo build --release --locked -p earful \
     && rm -rf crates/server/src
 
 # rust-embed bakes these folders into the release binary at compile time.
@@ -41,8 +41,8 @@ COPY --from=web /app/apps/admin/dist apps/admin/dist
 COPY --from=web /app/packages/widget/dist packages/widget/dist
 COPY crates/server crates/server
 RUN touch crates/server/src/main.rs crates/server/src/lib.rs \
-    && cargo build --release --locked -p feedback-harvest \
-    && cp target/release/feedback-harvest /feedback-harvest
+    && cargo build --release --locked -p earful \
+    && cp target/release/earful /earful
 
 # Data dir owned by the distroless nonroot user (uid/gid 65532).
 RUN mkdir -p /out/data && chown 65532:65532 /out/data
@@ -69,7 +69,7 @@ RUN for f in config.json model.safetensors tokenizer.json; do \
 
 # ---------- 4. Runtime ----------
 FROM gcr.io/distroless/cc-debian12:nonroot
-COPY --from=server /feedback-harvest /feedback-harvest
+COPY --from=server /earful /earful
 COPY --from=server --chown=65532:65532 /out/data /data
 # Read only for everyone; the server never writes to the model dir.
 COPY --from=model /models /models
@@ -77,16 +77,16 @@ COPY --from=model /models /models
 # 0.0.0.0 here is the in-container bind only. Coolify publishes no host port and
 # reaches the app over its private Docker network; docker-compose.yml publishes
 # to 127.0.0.1 only. Never publish this port on a public interface.
-ENV FH_BIND=0.0.0.0:8080 \
-    FH_DATABASE_PATH=/data/feedback-harvest.db \
-    FH_TRUSTED_PROXY_HOPS=1 \
-    FH_EMBED_MODEL_PATH=/models/potion-base-8M
+ENV EARFUL_BIND=0.0.0.0:8080 \
+    EARFUL_DATABASE_PATH=/data/earful.db \
+    EARFUL_TRUSTED_PROXY_HOPS=1 \
+    EARFUL_EMBED_MODEL_PATH=/models/potion-base-8M
 
 VOLUME /data
 # Documentation only: EXPOSE does not publish anything.
 EXPOSE 8080
 USER nonroot
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["/feedback-harvest", "healthcheck"]
-ENTRYPOINT ["/feedback-harvest"]
+    CMD ["/earful", "healthcheck"]
+ENTRYPOINT ["/earful"]
 CMD ["serve"]

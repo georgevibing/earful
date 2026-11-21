@@ -1,6 +1,6 @@
 # Crash reporting and agent investigation
 
-Feedback Harvest stores diagnostic reports in SQLite with the existing inbox,
+Earful stores diagnostic reports in SQLite with the existing inbox,
 labels and triage. It does not install an engine crash handler, stream logs,
 accept binary dumps or symbolicate stacks.
 

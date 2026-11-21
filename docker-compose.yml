@@ -1,36 +1,36 @@
 # Local / single-host self hosting. For Coolify use the Dockerfile build pack
 # instead (see docs/deploy-coolify.md); Coolify must not publish host ports.
 #
-#   cp .env.example .env    # then set FH_ADMIN_PASSWORD_HASH (single quoted!)
+#   cp .env.example .env    # then set EARFUL_ADMIN_PASSWORD_HASH (single quoted!)
 #   docker compose up -d --build
 #   open http://127.0.0.1:8080/admin/
 
 services:
-  feedback-harvest:
+  earful:
     build: .
-    image: feedback-harvest:local
+    image: earful:local
     restart: unless-stopped
     # Loopback only. Reach it from another machine with an SSH tunnel:
     #   ssh -L 8080:127.0.0.1:8080 your-server
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - fh-data:/data
+      - earful-data:/data
     environment:
       # Fails fast when unset. The value comes from .env, where it must be
       # wrapped in single quotes so the `$` signs of the argon2 hash stay literal.
-      FH_ADMIN_PASSWORD_HASH: ${FH_ADMIN_PASSWORD_HASH:?set it in .env}
+      EARFUL_ADMIN_PASSWORD_HASH: ${EARFUL_ADMIN_PASSWORD_HASH:?set it in .env}
       # No reverse proxy in front locally, so do not trust X-Forwarded-For.
-      FH_TRUSTED_PROXY_HOPS: "0"
+      EARFUL_TRUSTED_PROXY_HOPS: "0"
       # Only because this setup serves plain http on localhost. Keep the default
       # (true) whenever the app is reached over HTTPS.
-      FH_COOKIE_SECURE: "false"
+      EARFUL_COOKIE_SECURE: "false"
       # auto uses the Model2Vec model bundled in the image (offline semantic search).
-      FH_EMBED_PROVIDER: ${FH_EMBED_PROVIDER:-auto}
+      EARFUL_EMBED_PROVIDER: ${EARFUL_EMBED_PROVIDER:-auto}
       # Optional upgrade to a transformer model (uncomment the ollama service below):
-      # FH_EMBED_PROVIDER: openai
-      # FH_EMBED_URL: http://ollama:11434/v1
-      # FH_EMBED_MODEL: nomic-embed-text
+      # EARFUL_EMBED_PROVIDER: openai
+      # EARFUL_EMBED_URL: http://ollama:11434/v1
+      # EARFUL_EMBED_MODEL: nomic-embed-text
       RUST_LOG: ${RUST_LOG:-info}
 
   # Optional embedding sidecar. Reachable only on the compose network, no published ports.
@@ -43,5 +43,5 @@ services:
   #     - ollama-data:/root/.ollama
 
 volumes:
-  fh-data:
+  earful-data:
   # ollama-data:

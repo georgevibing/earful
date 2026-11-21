@@ -5,7 +5,7 @@ const longName = 'Space exploration project ' + 'x'.repeat(90);
 const project: Project = {
   id: 1, title: longName, slug: 'space-' + 'x'.repeat(55), project_type: 'game',
   description: 'A long description with an unbroken URL: https://example.com/' + 'x'.repeat(150),
-  ingest_key: 'fhk_' + 'a'.repeat(32), accepting: true, created_at: 1_700_000_000, updated_at: 1_700_000_000,
+  ingest_key: 'ear_' + 'a'.repeat(32), accepting: true, created_at: 1_700_000_000, updated_at: 1_700_000_000,
   stats: { total: 1, open: 1, new: 1, bugs: 1, feedback: 0, spam: 0, last_at: 1_700_000_000 },
 };
 const labels: LabelSummary[] = [{ id: 1, project_id: 1, name: 'Long theme ' + 'x'.repeat(53), color: 'blue', description: 'A long guidance ' + 'x'.repeat(250), created_at: 0, updated_at: 0, open_count: 1, feedback_count: 1 }];
@@ -34,8 +34,8 @@ async function mockApi(page: Page) {
       : path.endsWith('/feedback/1') ? { item: feedback, similar: [] }
       : path.endsWith('/feedback') ? { items: [feedback], total: 1, mode: 'hybrid', semantic: true }
       : path.endsWith('/tokens') ? (route.request().method() === 'POST'
-        ? { id: 1, name: longName, scope: 'read', prefix: 'fht_ab12', token: 'fht_' + 'a'.repeat(64), created_at: 1_700_000_000, last_used_at: null }
-        : [{ id: 1, name: longName, scope: 'read', prefix: 'fht_ab12', created_at: 1_700_000_000, last_used_at: null }])
+        ? { id: 1, name: longName, scope: 'read', prefix: 'eat_ab12', token: 'eat_' + 'a'.repeat(64), created_at: 1_700_000_000, last_used_at: null }
+        : [{ id: 1, name: longName, scope: 'read', prefix: 'eat_ab12', created_at: 1_700_000_000, last_used_at: null }])
       : null;
     if (data === null) throw new Error(`Unexpected API request: ${path}`);
     await route.fulfill({ json: data });

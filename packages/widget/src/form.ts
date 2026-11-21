@@ -2,7 +2,7 @@
  * Feedback form rendered into a Shadow DOM. Built with DOM APIs only; user and
  * server provided strings are always assigned via textContent or attributes.
  */
-import { createClient, FeedbackHarvestError, type FeedbackClient, type FeedbackKind } from './client';
+import { createClient, EarfulError, type FeedbackClient, type FeedbackKind } from './client';
 import { applyStyles } from './styles';
 
 export const BODY_MIN = 3;
@@ -44,11 +44,11 @@ type Attrs = Record<string, string | boolean | undefined>;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** The Feedback Harvest mark (same geometry as the favicon), built without innerHTML. */
+/** The Earful mark (same geometry as the favicon), built without innerHTML. */
 function mark(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 64 64');
-  svg.setAttribute('class', 'fh-mark');
+  svg.setAttribute('class', 'earful-mark');
   svg.setAttribute('aria-hidden', 'true');
   const shapes: Array<[string, Record<string, string>]> = [
     ['path', { fill: '#2a78d6', d: 'M16 3h32a13 13 0 0 1 13 13v21a13 13 0 0 1-13 13H29l-14 11V50A13 13 0 0 1 3 37V16A13 13 0 0 1 16 3z' }],
@@ -80,7 +80,7 @@ function h<K extends keyof HTMLElementTagNameMap>(
 }
 
 let idCounter = 0;
-const uid = (name: string) => `fh-${name}-${++idCounter}`;
+const uid = (name: string) => `earful-${name}-${++idCounter}`;
 
 /** Automatically collected context. Query string and hash are stripped from the URL. */
 export function collectMeta(): Record<string, string> {
@@ -105,7 +105,7 @@ function formatWait(seconds: number): string {
 
 /** Turns an API error into something a player or visitor can act on. */
 export function friendlyError(err: unknown): string {
-  if (!(err instanceof FeedbackHarvestError)) return 'Something went wrong. Please try again.';
+  if (!(err instanceof EarfulError)) return 'Something went wrong. Please try again.';
   switch (err.code) {
     case 'rate_limited':
       return err.retryAfter
@@ -156,20 +156,20 @@ export function mount(host: HTMLElement, options: MountOptions): MountedForm {
 
   const ids = { heading: uid('heading'), title: uid('title'), body: uid('body'), counter: uid('counter'), contact: uid('contact'), hp: uid('hp') };
 
-  const heading = h('h2', { class: 'fh-heading', id: ids.heading }, [
+  const heading = h('h2', { class: 'earful-heading', id: ids.heading }, [
     mark(),
     options.project ? `Feedback for ${options.project}` : 'Send feedback',
   ]);
 
   const kindButtons = (['bug', 'feedback'] as const).map((value) =>
-    h('button', { type: 'button', class: 'fh-seg', role: 'radio', 'data-kind': value }, [
+    h('button', { type: 'button', class: 'earful-seg', role: 'radio', 'data-kind': value }, [
       value === 'bug' ? 'Bug report' : 'Feedback',
     ]),
   );
-  const kindGroup = h('div', { class: 'fh-segmented', role: 'radiogroup', 'aria-label': 'Type' }, kindButtons);
+  const kindGroup = h('div', { class: 'earful-segmented', role: 'radiogroup', 'aria-label': 'Type' }, kindButtons);
 
   const titleInput = h('input', {
-    class: 'fh-input',
+    class: 'earful-input',
     id: ids.title,
     name: 'title',
     type: 'text',
@@ -177,25 +177,25 @@ export function mount(host: HTMLElement, options: MountOptions): MountedForm {
     autocomplete: 'off',
   });
   const bodyInput = h('textarea', {
-    class: 'fh-input',
+    class: 'earful-input',
     id: ids.body,
     name: 'body',
     required: true,
     maxlength: String(BODY_MAX),
     'aria-describedby': ids.counter,
   });
-  const counter = h('div', { class: 'fh-counter', id: ids.counter }, [`0 / ${BODY_MAX}`]);
+  const counter = h('div', { class: 'earful-counter', id: ids.counter }, [`0 / ${BODY_MAX}`]);
 
   const stars = [1, 2, 3, 4, 5].map((n) =>
-    h('button', { type: 'button', class: 'fh-star', role: 'radio', 'aria-label': `${n} star${n === 1 ? '' : 's'}`, 'data-rating': String(n) }, ['★']),
+    h('button', { type: 'button', class: 'earful-star', role: 'radio', 'aria-label': `${n} star${n === 1 ? '' : 's'}`, 'data-rating': String(n) }, ['★']),
   );
-  const ratingField = h('fieldset', { class: 'fh-rating fh-field' }, [
-    h('legend', { class: 'fh-label' }, ['Rating ', h('span', { class: 'fh-optional' }, ['(optional)'])]),
-    h('div', { class: 'fh-stars', role: 'radiogroup', 'aria-label': 'Rating' }, stars),
+  const ratingField = h('fieldset', { class: 'earful-rating earful-field' }, [
+    h('legend', { class: 'earful-label' }, ['Rating ', h('span', { class: 'earful-optional' }, ['(optional)'])]),
+    h('div', { class: 'earful-stars', role: 'radiogroup', 'aria-label': 'Rating' }, stars),
   ]);
 
   const contactInput = h('input', {
-    class: 'fh-input',
+    class: 'earful-input',
     id: ids.contact,
     name: 'contact',
     type: 'text',
@@ -205,35 +205,35 @@ export function mount(host: HTMLElement, options: MountOptions): MountedForm {
   });
 
   const honeypot = h('input', { id: ids.hp, name: 'website', type: 'text', tabindex: '-1', autocomplete: 'off' });
-  const honeypotWrap = h('div', { class: 'fh-hp', 'aria-hidden': 'true' }, [
+  const honeypotWrap = h('div', { class: 'earful-hp', 'aria-hidden': 'true' }, [
     h('label', { for: ids.hp }, ['Website']),
     honeypot,
   ]);
 
-  const errorBox = h('div', { class: 'fh-error', role: 'alert' });
-  const submitButton = h('button', { type: 'submit', class: 'fh-btn' }, ['Send']);
-  const status = h('p', { class: 'fh-status', 'aria-live': 'polite' });
+  const errorBox = h('div', { class: 'earful-error', role: 'alert' });
+  const submitButton = h('button', { type: 'submit', class: 'earful-btn' }, ['Send']);
+  const status = h('p', { class: 'earful-status', 'aria-live': 'polite' });
 
-  const optional = () => h('span', { class: 'fh-optional' }, [' (optional)']);
-  const form = h('form', { class: 'fh-form', novalidate: true, 'aria-labelledby': ids.heading }, [
+  const optional = () => h('span', { class: 'earful-optional' }, [' (optional)']);
+  const form = h('form', { class: 'earful-form', novalidate: true, 'aria-labelledby': ids.heading }, [
     heading,
     kindGroup,
-    h('div', { class: 'fh-field' }, [h('label', { class: 'fh-label', for: ids.title }, ['Title', optional()]), titleInput]),
-    h('div', { class: 'fh-field' }, [h('label', { class: 'fh-label', for: ids.body }, ['Description']), bodyInput, counter]),
+    h('div', { class: 'earful-field' }, [h('label', { class: 'earful-label', for: ids.title }, ['Title', optional()]), titleInput]),
+    h('div', { class: 'earful-field' }, [h('label', { class: 'earful-label', for: ids.body }, ['Description']), bodyInput, counter]),
     ratingField,
-    h('div', { class: 'fh-field' }, [h('label', { class: 'fh-label', for: ids.contact }, ['Contact', optional()]), contactInput]),
+    h('div', { class: 'earful-field' }, [h('label', { class: 'earful-label', for: ids.contact }, ['Contact', optional()]), contactInput]),
     honeypotWrap,
     errorBox,
-    h('div', { class: 'fh-actions' }, [submitButton, status]),
+    h('div', { class: 'earful-actions' }, [submitButton, status]),
   ]);
 
-  const successTitle = h('p', { class: 'fh-success-title' }, ['Thanks! Your feedback was sent.']);
-  const againButton = h('button', { type: 'button', class: 'fh-btn fh-btn-secondary' }, ['Send another']);
-  const success = h('div', { class: 'fh-success', role: 'status', hidden: true }, [successTitle, againButton]);
+  const successTitle = h('p', { class: 'earful-success-title' }, ['Thanks! Your feedback was sent.']);
+  const againButton = h('button', { type: 'button', class: 'earful-btn earful-btn-secondary' }, ['Send another']);
+  const success = h('div', { class: 'earful-success', role: 'status', hidden: true }, [successTitle, againButton]);
 
-  const card = h('div', { class: 'fh-card fh-relative' });
+  const card = h('div', { class: 'earful-card earful-relative' });
   if (options.onClose) {
-    const close = h('button', { type: 'button', class: 'fh-close', 'aria-label': 'Close' }, ['×']);
+    const close = h('button', { type: 'button', class: 'earful-close', 'aria-label': 'Close' }, ['×']);
     close.addEventListener('click', () => options.onClose?.());
     card.append(close);
   }
@@ -248,14 +248,14 @@ export function mount(host: HTMLElement, options: MountOptions): MountedForm {
   function renderRating() {
     for (const star of stars) {
       const n = Number(star.dataset.rating);
-      star.classList.toggle('fh-on', rating !== undefined && n <= rating);
+      star.classList.toggle('earful-on', rating !== undefined && n <= rating);
       star.setAttribute('aria-checked', String(n === rating));
     }
   }
   function renderCounter() {
     const len = bodyInput.value.length;
     counter.textContent = `${len} / ${BODY_MAX}`;
-    counter.classList.toggle('fh-over', len > BODY_MAX);
+    counter.classList.toggle('earful-over', len > BODY_MAX);
   }
 
   for (const btn of kindButtons) {

@@ -7,9 +7,9 @@ Coolify builds the repository's `Dockerfile` and puts its own reverse proxy (Tra
 On any machine with the repo:
 
 ```sh
-printf '%s' 'choose-a-long-password' | cargo run -q -p feedback-harvest -- hash-password
+printf '%s' 'choose-a-long-password' | cargo run -q -p earful -- hash-password
 # or, with a locally built image:
-printf '%s' 'choose-a-long-password' | docker run --rm -i feedback-harvest:local hash-password
+printf '%s' 'choose-a-long-password' | docker run --rm -i earful:local hash-password
 ```
 
 Keep the output (`$argon2id$v=19$...`) for step 4.
@@ -30,31 +30,31 @@ Keep the output (`$argon2id$v=19$...`) for step 4.
 
 | Variable | Value | Notes |
 | --- | --- | --- |
-| `FH_ADMIN_PASSWORD_HASH` | the hash from step 1 | Mark it **literal** (Coolify's "Is Literal?" option) so the `$` characters are not interpolated, and make sure it is not a build variable. Without it, every admin login is rejected. |
-| `FH_TRUSTED_PROXY_HOPS` | `1` | Already the image default. Use `2` only if a Cloudflare proxy (orange cloud) sits in front of Coolify, see below. |
-| `FH_EMBED_PROVIDER` and friends | optional | The image already does offline semantic search with its bundled Model2Vec model. See "Semantic search" below for upgrades. |
+| `EARFUL_ADMIN_PASSWORD_HASH` | the hash from step 1 | Mark it **literal** (Coolify's "Is Literal?" option) so the `$` characters are not interpolated, and make sure it is not a build variable. Without it, every admin login is rejected. |
+| `EARFUL_TRUSTED_PROXY_HOPS` | `1` | Already the image default. Use `2` only if a Cloudflare proxy (orange cloud) sits in front of Coolify, see below. |
+| `EARFUL_EMBED_PROVIDER` and friends | optional | The image already does offline semantic search with its bundled Model2Vec model. See "Semantic search" below for upgrades. |
 | `RUST_LOG` | `info` | Optional. |
 
-Leave `FH_BIND`, `FH_DATABASE_PATH` and `FH_COOKIE_SECURE` at their image defaults.
+Leave `EARFUL_BIND`, `EARFUL_DATABASE_PATH` and `EARFUL_COOKIE_SECURE` at their image defaults.
 
 ### Proxy hops and client IPs
 
 Rate limits work per client IP, so the app must see the real one:
 
-- **Coolify proxy only**: the proxy appends the client address to `X-Forwarded-For`; `FH_TRUSTED_PROXY_HOPS=1` takes the rightmost entry. Values the client sends itself are ignored.
-- **Cloudflare proxy + Coolify proxy**: set `FH_TRUSTED_PROXY_HOPS=2`, and configure the Coolify proxy to trust Cloudflare's IP ranges for forwarded headers (Traefik: `entryPoints.https.forwardedHeaders.trustedIPs` with the ranges from https://www.cloudflare.com/ips/). Without that, Traefik discards Cloudflare's `X-Forwarded-For`, the chain is too short, and every visitor collapses onto one address.
+- **Coolify proxy only**: the proxy appends the client address to `X-Forwarded-For`; `EARFUL_TRUSTED_PROXY_HOPS=1` takes the rightmost entry. Values the client sends itself are ignored.
+- **Cloudflare proxy + Coolify proxy**: set `EARFUL_TRUSTED_PROXY_HOPS=2`, and configure the Coolify proxy to trust Cloudflare's IP ranges for forwarded headers (Traefik: `entryPoints.https.forwardedHeaders.trustedIPs` with the ranges from https://www.cloudflare.com/ips/). Without that, Traefik discards Cloudflare's `X-Forwarded-For`, the chain is too short, and every visitor collapses onto one address.
 
 If the hop count is too low, all users share the proxy's address and hit the rate limits together. If it is too high, clients can spoof their IP. When in doubt, submit from two different networks and confirm they are rate limited independently.
 
 ## 5. Persistent storage
 
-**Storages**, **+ Add**, **Volume Mount**: destination path `/data`. The SQLite database lives at `/data/feedback-harvest.db`.
+**Storages**, **+ Add**, **Volume Mount**: destination path `/data`. The SQLite database lives at `/data/earful.db`.
 
 A named volume is initialised from the image with the right ownership (uid 65532, the distroless `nonroot` user). If you use a **bind mount** instead, `chown 65532:65532` the host directory first or the app cannot write.
 
 ## 6. Health check
 
-The image declares a Docker `HEALTHCHECK` that runs `/feedback-harvest healthcheck` (an HTTP probe against `/healthz` inside the container). The runtime image is distroless and ships no shell, `curl` or `wget`, so leave Coolify's own health check option disabled (it runs `curl`/`wget` inside the container) and rely on the image's check.
+The image declares a Docker `HEALTHCHECK` that runs `/earful healthcheck` (an HTTP probe against `/healthz` inside the container). The runtime image is distroless and ships no shell, `curl` or `wget`, so leave Coolify's own health check option disabled (it runs `curl`/`wget` inside the container) and rely on the image's check.
 
 ## 7. Deploy and verify
 
@@ -66,9 +66,9 @@ The image declares a Docker `HEALTHCHECK` that runs `/feedback-harvest healthche
 
 ## Semantic search
 
-Nothing to do: the image bundles the Model2Vec model `minishlab/potion-base-8M` at `/models/potion-base-8M` (31 MB, pinned revision, sha256 verified during the build) and `FH_EMBED_PROVIDER=auto` picks it up. No extra service, no GPU, no API key, and the feedback text never leaves the container. The dashboard shows `model2vec:potion-base-8M` under embeddings once it is running.
+Nothing to do: the image bundles the Model2Vec model `minishlab/potion-base-8M` at `/models/potion-base-8M` (31 MB, pinned revision, sha256 verified during the build) and `EARFUL_EMBED_PROVIDER=auto` picks it up. No extra service, no GPU, no API key, and the feedback text never leaves the container. The dashboard shows `model2vec:potion-base-8M` under embeddings once it is running.
 
-To use a different Model2Vec model, mount a directory with `config.json`, `model.safetensors` and `tokenizer.json` (fetch one with `feedback-harvest download-model <repo> <dir>`) and point `FH_EMBED_MODEL_PATH` at it.
+To use a different Model2Vec model, mount a directory with `config.json`, `model.safetensors` and `tokenizer.json` (fetch one with `earful download-model <repo> <dir>`) and point `EARFUL_EMBED_MODEL_PATH` at it.
 
 ### Upgrade: Ollama (optional)
 
@@ -77,11 +77,11 @@ Only worth it if you need transformer quality (long, subtle or multilingual feed
 1. In the same Coolify project and environment, **+ New**, **Docker Image** `ollama/ollama:latest` (or the Ollama one-click service). Add a volume mount at `/root/.ollama`. No domain, no port mappings.
 2. Make sure both resources share a network (same environment, or enable "Connect to Predefined Network"), and note the Ollama container or service name.
 3. Pull a model once from the Ollama container terminal: `ollama pull nomic-embed-text`.
-4. On feedback-harvest set `FH_EMBED_PROVIDER=openai`, `FH_EMBED_URL=http://<ollama-name>:11434/v1`, `FH_EMBED_MODEL=nomic-embed-text` and redeploy. Existing items are re-embedded in the background; progress shows on the dashboard.
+4. On earful set `EARFUL_EMBED_PROVIDER=openai`, `EARFUL_EMBED_URL=http://<ollama-name>:11434/v1`, `EARFUL_EMBED_MODEL=nomic-embed-text` and redeploy. Existing items are re-embedded in the background; progress shows on the dashboard.
 
 ### Upgrade: OpenAI (optional)
 
- `FH_EMBED_PROVIDER=openai`, `FH_EMBED_MODEL=text-embedding-3-small`, `FH_EMBED_API_KEY=<key>` (mark it as a secret, not a build variable).
+ `EARFUL_EMBED_PROVIDER=openai`, `EARFUL_EMBED_MODEL=text-embedding-3-small`, `EARFUL_EMBED_API_KEY=<key>` (mark it as a secret, not a build variable).
 
 ## Backups
 
@@ -89,13 +89,13 @@ The database runs in WAL mode, so copy it with SQLite's backup API rather than `
 
 ```sh
 # On the Coolify host. Find the volume path with: docker volume inspect <volume-name>
-sqlite3 /var/lib/docker/volumes/<volume-name>/_data/feedback-harvest.db \
-  ".backup '/root/backups/feedback-harvest-$(date +%F).db'"
+sqlite3 /var/lib/docker/volumes/<volume-name>/_data/earful.db \
+  ".backup '/root/backups/earful-$(date +%F).db'"
 ```
 
 Schedule it with cron, or run [Litestream](https://litestream.io) as a separate container mounting the same volume to replicate continuously to S3 compatible storage. Coolify's built-in database backups do not apply here because this is an application volume, not a managed database.
 
-Restore: stop the app, replace `feedback-harvest.db` in the volume (delete any stale `-wal` and `-shm` files), start the app.
+Restore: stop the app, replace `earful.db` in the volume (delete any stale `-wal` and `-shm` files), start the app.
 
 ## Upgrades
 

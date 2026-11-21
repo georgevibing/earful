@@ -1,6 +1,6 @@
 # MCP server
 
-feedback-harvest ships a [Model Context Protocol](https://modelcontextprotocol.io) server
+earful ships a [Model Context Protocol](https://modelcontextprotocol.io) server
 inside the same binary, at `POST /mcp`. Point Claude Code, Claude Desktop, Cursor, VS Code
 or any MCP client at it and your agent can manage projects, triage the inbox, search
 feedback by meaning, group reports into reusable themes, import reports from other channels and draft release notes.
@@ -14,7 +14,7 @@ feedback by meaning, group reports into reusable themes, import reports from oth
 ### 1. Create a token
 
 In the admin UI open **API tokens**, pick a name (for example `claude-code laptop`) and a
-scope, and copy the `fht_...` token. It is shown once.
+scope, and copy the `eat_...` token. It is shown once.
 
 | Scope | Can do |
 | --- | --- |
@@ -23,7 +23,7 @@ scope, and copy the `fht_...` token. It is shown once.
 
 Prefer `read` for agents that only analyse. Use `write` when you want the agent to triage.
 
-Or with curl (the session cookie needs `FH_COOKIE_SECURE=false` on plain http localhost):
+Or with curl (the session cookie needs `EARFUL_COOKIE_SECURE=false` on plain http localhost):
 
 ```bash
 HOST=https://feedback.example.com
@@ -31,18 +31,18 @@ curl -s -c /tmp/fh.cookies -X POST "$HOST/api/admin/login" \
   -H 'content-type: application/json' -d '{"password":"<admin password>"}'
 curl -s -b /tmp/fh.cookies -X POST "$HOST/api/admin/tokens" \
   -H 'content-type: application/json' -d '{"name":"claude-code","scope":"write"}'
-# => {"token":"fht_...","id":1,"name":"claude-code","scope":"write","prefix":"fht_1a2b",...}
+# => {"token":"eat_...","id":1,"name":"claude-code","scope":"write","prefix":"eat_1a2b",...}
 ```
 
 ### 2. Connect your client
 
-Replace `https://feedback.example.com` with your deployment and `fht_...` with the token.
+Replace `https://feedback.example.com` with your deployment and `eat_...` with the token.
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http feedback-harvest https://feedback.example.com/mcp \
-  --header "Authorization: Bearer fht_..."
+claude mcp add --transport http earful https://feedback.example.com/mcp \
+  --header "Authorization: Bearer eat_..."
 ```
 
 Add `--scope user` to make it available in every project. To share the config in a repo
@@ -51,10 +51,10 @@ without committing the token, use `.mcp.json` with an environment variable:
 ```json
 {
   "mcpServers": {
-    "feedback-harvest": {
+    "earful": {
       "type": "http",
       "url": "https://feedback.example.com/mcp",
-      "headers": { "Authorization": "Bearer ${FH_MCP_TOKEN}" }
+      "headers": { "Authorization": "Bearer ${EARFUL_MCP_TOKEN}" }
     }
   }
 }
@@ -65,9 +65,9 @@ without committing the token, use `.mcp.json` with an environment variable:
 ```json
 {
   "mcpServers": {
-    "feedback-harvest": {
+    "earful": {
       "url": "https://feedback.example.com/mcp",
-      "headers": { "Authorization": "Bearer fht_..." }
+      "headers": { "Authorization": "Bearer eat_..." }
     }
   }
 }
@@ -78,13 +78,13 @@ without committing the token, use `.mcp.json` with an environment variable:
 ```json
 {
   "inputs": [
-    { "type": "promptString", "id": "fh-token", "description": "feedback-harvest API token", "password": true }
+    { "type": "promptString", "id": "earful-token", "description": "earful API token", "password": true }
   ],
   "servers": {
-    "feedback-harvest": {
+    "earful": {
       "type": "http",
       "url": "https://feedback.example.com/mcp",
-      "headers": { "Authorization": "Bearer ${input:fh-token}" }
+      "headers": { "Authorization": "Bearer ${input:earful-token}" }
     }
   }
 }
@@ -99,12 +99,12 @@ replies to stdout.
 ```json
 {
   "mcpServers": {
-    "feedback-harvest": {
-      "command": "/usr/local/bin/feedback-harvest",
+    "earful": {
+      "command": "/usr/local/bin/earful",
       "args": ["mcp-stdio"],
       "env": {
-        "FH_MCP_URL": "https://feedback.example.com/mcp",
-        "FH_MCP_TOKEN": "fht_..."
+        "EARFUL_MCP_URL": "https://feedback.example.com/mcp",
+        "EARFUL_MCP_TOKEN": "eat_..."
       }
     }
   }
@@ -112,17 +112,17 @@ replies to stdout.
 ```
 
 No local binary? Run the bridge from the Docker image instead:
-`"command": "docker", "args": ["run", "--rm", "-i", "-e", "FH_MCP_URL", "-e", "FH_MCP_TOKEN", "<your image>", "mcp-stdio"]`.
-`FH_MCP_TOKEN_FILE` works too. The bridge refuses plain `http://` except for localhost.
+`"command": "docker", "args": ["run", "--rm", "-i", "-e", "EARFUL_MCP_URL", "-e", "EARFUL_MCP_TOKEN", "<your image>", "mcp-stdio"]`.
+`EARFUL_MCP_TOKEN_FILE` works too. The bridge refuses plain `http://` except for localhost.
 
 **Anything else**
 
 Any client that speaks Streamable HTTP works with: URL `https://<host>/mcp`, header
-`Authorization: Bearer fht_...`. A raw call looks like:
+`Authorization: Bearer eat_...`. A raw call looks like:
 
 ```bash
 curl -s https://feedback.example.com/mcp \
-  -H "Authorization: Bearer fht_..." -H 'content-type: application/json' \
+  -H "Authorization: Bearer eat_..." -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}'
 ```
 
@@ -193,9 +193,9 @@ between 3 and 10000 characters`, `not_found: no feedback with id 42`,
 
 | URI | Content |
 | --- | --- |
-| `feedback-harvest://projects` | All projects with counters. |
-| `feedback-harvest://projects/{slug}` | One project, its label definitions with counts, and its 25 newest open items. |
-| `feedback-harvest://feedback/{id}` | One item in full plus similar items. |
+| `earful://projects` | All projects with counters. |
+| `earful://projects/{slug}` | One project, its label definitions with counts, and its 25 newest open items. |
+| `earful://feedback/{id}` | One item in full plus similar items. |
 
 All are `application/json`. Concrete project URIs appear in `resources/list`.
 
@@ -233,7 +233,7 @@ combined with label IDs. `summarize_feedback` analyzes themes without changing t
 
 ## Security notes
 
-- Tokens are random 256 bit secrets (`fht_` + 64 hex). Only their SHA-256 is stored and
+- Tokens are random 256 bit secrets (`eat_` + 64 hex). Only their SHA-256 is stored and
   the list endpoint never returns them. Revoke a token in **API tokens** and it stops
   working on the next request.
 - Read tokens cannot see or call write tools. Give agents the smallest scope that works.

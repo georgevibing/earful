@@ -28,7 +28,7 @@ function item(id: number, over: Partial<Feedback> = {}): Feedback {
   };
 }
 
-const project = { id: 1, slug: 'game', title: 'My Game', project_type: 'game', description: '', ingest_key: 'fhk_x', accepting: true, created_at: 0, updated_at: 0 };
+const project = { id: 1, slug: 'game', title: 'My Game', project_type: 'game', description: '', ingest_key: 'ear_x', accepting: true, created_at: 0, updated_at: 0 };
 
 afterEach(() => {
   cleanup();

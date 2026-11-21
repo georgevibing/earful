@@ -1,8 +1,8 @@
-// Seeds a running feedback-harvest instance with believable demo data through
+// Seeds a running earful instance with believable demo data through
 // the real public, admin and MCP APIs. Used by scripts/screenshots.mjs, and
 // handy on its own for poking at the UI:
 //
-//   FH_TRUSTED_PROXY_HOPS=1 FH_POW_BITS=8 FH_MIN_FILL_SECS=0 ... feedback-harvest serve
+//   EARFUL_TRUSTED_PROXY_HOPS=1 EARFUL_POW_BITS=8 EARFUL_MIN_FILL_SECS=0 ... earful serve
 //   node scripts/seed-demo.mjs http://127.0.0.1:8080 'admin-password'
 //
 // The server must trust one proxy hop so each simulated player gets its own
@@ -236,7 +236,7 @@ export async function seed(base, password) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [base = 'http://127.0.0.1:8080', password = process.env.FH_DEMO_PASSWORD] = process.argv.slice(2);
+  const [base = 'http://127.0.0.1:8080', password = process.env.EARFUL_DEMO_PASSWORD] = process.argv.slice(2);
   if (!password) throw new Error('usage: node scripts/seed-demo.mjs <base-url> <admin-password>');
   await seed(base, password);
   console.log(`seeded ${base}`);

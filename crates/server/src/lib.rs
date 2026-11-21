@@ -1,4 +1,4 @@
-//! feedback-harvest: tiny self-hosted feedback and bug report collector.
+//! earful: tiny self-hosted feedback and bug report collector.
 
 pub mod auth;
 pub mod config;

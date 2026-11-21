@@ -1,6 +1,6 @@
 //! Admin-issued API tokens for MCP clients and scripts.
 //!
-//! Format `fht_` + 64 hex chars. Only `sha256(token)` is stored, so a leaked
+//! Format `eat_` + 64 hex chars. Only `sha256(token)` is stored, so a leaked
 //! database does not leak usable tokens. Lookups go by hash, which keeps the
 //! verification cost independent of how close a guess is.
 
@@ -15,7 +15,9 @@ use crate::{
     state::AppState,
 };
 
-pub const PREFIX: &str = "fht_";
+pub const PREFIX: &str = "eat_";
+/// Prefix of tokens issued before the project was renamed; still accepted.
+pub const LEGACY_PREFIX: &str = "fht_";
 const MAX_NAME: usize = 100;
 /// Failed bearer attempts allowed per IP per window before answering 429.
 pub const FAILED_AUTH_LIMIT: u32 = 20;
@@ -119,7 +121,8 @@ pub fn delete(c: &Connection, id: i64) -> rusqlite::Result<bool> {
 
 /// Resolves a raw token to its metadata, touching `last_used_at` at most once a minute.
 pub fn verify(c: &Connection, raw: &str) -> rusqlite::Result<Option<Token>> {
-    if !raw.starts_with(PREFIX) || raw.len() != PREFIX.len() + 64 {
+    let prefixed = raw.starts_with(PREFIX) || raw.starts_with(LEGACY_PREFIX);
+    if !prefixed || raw.len() != PREFIX.len() + 64 {
         return Ok(None);
     }
     let hash = crypto::sha256_hex(raw.as_bytes());
@@ -205,7 +208,7 @@ mod tests {
     fn create_verify_delete() {
         let c = conn();
         let (raw, t) = create(&c, "laptop", Scope::Write).unwrap();
-        assert!(raw.starts_with("fht_") && raw.len() == 68);
+        assert!(raw.starts_with("eat_") && raw.len() == 68);
         assert_eq!(t.prefix, &raw[..8]);
         let stored: String = c
             .query_row("SELECT token_hash FROM api_tokens", [], |r| r.get(0))
@@ -215,8 +218,22 @@ mod tests {
         assert_eq!(v.scope, Scope::Write);
         assert!(v.last_used_at.is_none(), "metadata read before touch");
         assert!(verify(&c, &raw).unwrap().unwrap().last_used_at.is_some());
-        assert!(verify(&c, "fht_nope").unwrap().is_none());
+        assert!(verify(&c, "eat_nope").unwrap().is_none());
         assert!(delete(&c, t.id).unwrap());
         assert!(verify(&c, &raw).unwrap().is_none());
+    }
+
+    #[test]
+    fn tokens_issued_before_the_rename_still_verify() {
+        let c = conn();
+        let (raw, _) = create(&c, "old client", Scope::Read).unwrap();
+        let legacy = format!("{LEGACY_PREFIX}{}", &raw[PREFIX.len()..]);
+        c.execute(
+            "UPDATE api_tokens SET token_hash = ?1",
+            params![crypto::sha256_hex(legacy.as_bytes())],
+        )
+        .unwrap();
+        assert_eq!(verify(&c, &legacy).unwrap().unwrap().scope, Scope::Read);
+        assert!(verify(&c, "xyz_short").unwrap().is_none());
     }
 }

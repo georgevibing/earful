@@ -60,8 +60,11 @@ async fn hosted_page_escapes_and_is_frameable() {
         r.text
             .contains("&quot;quoted&quot; &amp; &lt;b&gt;bold&lt;/b&gt;")
     );
-    assert!(r.text.contains(&format!("data-fh-key=\"{}\"", key_of(&p))));
-    assert!(r.text.contains("data-fh-inline"));
+    assert!(
+        r.text
+            .contains(&format!("data-earful-key=\"{}\"", key_of(&p)))
+    );
+    assert!(r.text.contains("data-earful-inline"));
     assert!(
         r.text
             .contains("<script src=\"/widget.js\" defer></script>")
@@ -78,7 +81,7 @@ async fn hosted_page_escapes_and_is_frameable() {
     let paused = app.get("/s/xss").anonymous().send().await;
     assert_eq!(paused.status, StatusCode::OK);
     assert!(paused.text.contains("not accepting feedback"));
-    assert!(!paused.text.contains("data-fh-key"));
+    assert!(!paused.text.contains("data-earful-key"));
 
     assert_eq!(
         app.get("/s/nope").anonymous().send().await.status,

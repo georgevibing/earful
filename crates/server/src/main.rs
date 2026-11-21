@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use feedback_harvest::{
+use earful::{
     auth, build_router,
     config::{Config, DEFAULT_MODEL2VEC_PATH, DEFAULT_MODEL2VEC_REPO},
     download, embed, pow,
@@ -15,15 +15,15 @@ use feedback_harvest::{
 };
 use tracing_subscriber::EnvFilter;
 
-const HELP: &str = "feedback-harvest: tiny self-hosted feedback and bug report collector
+const HELP: &str = "earful: tiny self-hosted feedback and bug report collector
 
 USAGE:
-    feedback-harvest [COMMAND]
+    earful [COMMAND]
 
 COMMANDS:
     serve                      Run the HTTP server (default)
     hash-password              Read a password from stdin, print its argon2id hash
-                               for FH_ADMIN_PASSWORD_HASH
+                               for EARFUL_ADMIN_PASSWORD_HASH
     healthcheck                Exit 0 if the local server answers /healthz (for Docker)
     solve <challenge> <bits>   Print a proof of work nonce for a challenge (for testing)
     download-model [repo] [dir] [--revision <rev>]
@@ -31,10 +31,10 @@ COMMANDS:
                                (default minishlab/potion-base-8M into
                                models/potion-base-8M, revision main)
     mcp-stdio                  Bridge a stdio MCP client to a remote /mcp endpoint
-                               (env FH_MCP_URL and FH_MCP_TOKEN or FH_MCP_TOKEN_FILE)
+                               (env EARFUL_MCP_URL and EARFUL_MCP_TOKEN or EARFUL_MCP_TOKEN_FILE)
     help, --help, -h           Show this help
 
-Configuration is read from FH_* environment variables, see README.md.";
+Configuration is read from EARFUL_* environment variables, see README.md.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -70,6 +70,13 @@ fn serve() -> Result<()> {
         )
         .init();
     let cfg = Config::from_env()?;
+    let legacy = earful::config::legacy_vars_in_use();
+    if !legacy.is_empty() {
+        tracing::warn!(
+            vars = %legacy.join(", "),
+            "FH_* variables are deprecated and still honoured; rename them to EARFUL_*"
+        );
+    }
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
@@ -79,8 +86,8 @@ fn serve() -> Result<()> {
 async fn run(cfg: Config) -> Result<()> {
     if cfg.admin_password_hash.is_none() {
         tracing::warn!(
-            "FH_ADMIN_PASSWORD_HASH is not set: every admin login will be rejected. \
-             Generate one with `feedback-harvest hash-password`."
+            "EARFUL_ADMIN_PASSWORD_HASH is not set: every admin login will be rejected. \
+             Generate one with `earful hash-password`."
         );
     }
     let bind = cfg.bind;
@@ -126,7 +133,7 @@ fn mcp_stdio() -> Result<()> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?
-        .block_on(feedback_harvest::mcp::bridge::run())
+        .block_on(earful::mcp::bridge::run())
 }
 
 fn download_model(args: &[String]) -> Result<()> {
@@ -143,7 +150,7 @@ fn download_model(args: &[String]) -> Result<()> {
         }
     }
     if positional.len() > 2 {
-        bail!("usage: feedback-harvest download-model [repo] [dir] [--revision <rev>]");
+        bail!("usage: earful download-model [repo] [dir] [--revision <rev>]");
     }
     let repo = positional
         .first()
@@ -169,7 +176,7 @@ fn download_model(args: &[String]) -> Result<()> {
         "loaded {repo}@{revision} into {} ({dim} dimensions)",
         dir.display()
     );
-    println!("use it with FH_EMBED_MODEL_PATH={}", dir.display());
+    println!("use it with EARFUL_EMBED_MODEL_PATH={}", dir.display());
     Ok(())
 }
 
@@ -179,7 +186,7 @@ fn hash_password() -> Result<()> {
     let password = input.trim_end_matches(['\n', '\r']);
     if password.chars().count() < 10 {
         bail!(
-            "password must be at least 10 characters (pipe it in, e.g. `printf '%s' 'pw' | feedback-harvest hash-password`)"
+            "password must be at least 10 characters (pipe it in, e.g. `printf '%s' 'pw' | earful hash-password`)"
         );
     }
     println!("{}", auth::hash_password(password)?);
@@ -187,7 +194,7 @@ fn hash_password() -> Result<()> {
 }
 
 fn healthcheck() -> Result<()> {
-    let bind = std::env::var("FH_BIND").unwrap_or_else(|_| "127.0.0.1:8080".into());
+    let bind = earful::config::var("EARFUL_BIND").unwrap_or_else(|| "127.0.0.1:8080".into());
     let port = bind.rsplit(':').next().unwrap_or("8080");
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
@@ -205,7 +212,7 @@ fn healthcheck() -> Result<()> {
 
 fn solve(args: &[String]) -> Result<()> {
     let [challenge, bits] = args else {
-        bail!("usage: feedback-harvest solve <challenge> <bits>");
+        bail!("usage: earful solve <challenge> <bits>");
     };
     let bits: u32 = bits.parse().context("bits must be a number")?;
     if bits > 32 {

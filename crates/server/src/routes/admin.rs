@@ -72,7 +72,7 @@ fn is_unique_violation(e: &rusqlite::Error) -> bool {
 }
 
 fn new_ingest_key() -> String {
-    format!("fhk_{}", crypto::random_hex(16))
+    format!("ear_{}", crypto::random_hex(16))
 }
 
 // ---------------------------------------------------------------------------

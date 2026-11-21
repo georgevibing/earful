@@ -1,13 +1,13 @@
 //! Model2Vec provider tests. The real-model tests only run when
-//! `FH_TEST_MODEL2VEC_PATH` points at a downloaded model, e.g.
-//! `feedback-harvest download-model && FH_TEST_MODEL2VEC_PATH=models/potion-base-8M cargo test --test model2vec -- --nocapture`
+//! `EARFUL_TEST_MODEL2VEC_PATH` points at a downloaded model, e.g.
+//! `earful download-model && EARFUL_TEST_MODEL2VEC_PATH=models/potion-base-8M cargo test --test model2vec -- --nocapture`
 
 mod common;
 
 use std::{path::PathBuf, time::Instant};
 
 use common::{App, key_of, titles};
-use feedback_harvest::{
+use earful::{
     config::{Config, EmbedConfig},
     embed::{self, Embedder},
     state::AppState,
@@ -138,14 +138,14 @@ const QUERIES: &[(&str, &str, bool)] = &[
 ];
 
 fn model_path() -> Option<PathBuf> {
-    std::env::var("FH_TEST_MODEL2VEC_PATH")
+    std::env::var("EARFUL_TEST_MODEL2VEC_PATH")
         .ok()
         .map(PathBuf::from)
 }
 
 async fn model2vec() -> Option<Embedder> {
     let Some(path) = model_path() else {
-        eprintln!("skipped: set FH_TEST_MODEL2VEC_PATH to run");
+        eprintln!("skipped: set EARFUL_TEST_MODEL2VEC_PATH to run");
         return None;
     };
     let started = Instant::now();
@@ -241,7 +241,7 @@ async fn model2vec_beats_the_hash_embedder_on_paraphrases() {
 #[tokio::test]
 async fn model2vec_semantic_search_end_to_end_and_latency() {
     let Some(path) = model_path() else {
-        eprintln!("skipped: set FH_TEST_MODEL2VEC_PATH to run");
+        eprintln!("skipped: set EARFUL_TEST_MODEL2VEC_PATH to run");
         return;
     };
     let mut app = App::with(move |c| {
@@ -309,7 +309,7 @@ async fn switching_embedders_reembeds_everything() {
         .call(|c| {
             c.execute_batch(
                 "INSERT INTO projects (slug, title, ingest_key, created_at, updated_at)
-                 VALUES ('p', 'P', 'fhk_x', 0, 0);
+                 VALUES ('p', 'P', 'ear_x', 0, 0);
                  INSERT INTO feedback (project_id, kind, title, body, content_hash, ip_hash, created_at, updated_at, last_seen_at)
                  VALUES (1, 'bug', 'a', 'first body', 'h1', 'ip', 0, 0, 0),
                         (1, 'bug', 'b', 'second body', 'h2', 'ip', 0, 0, 0);",
@@ -356,5 +356,5 @@ async fn missing_model_fails_with_a_helpful_error() {
     .expect("missing model must fail");
     let msg = format!("{err:#}");
     assert!(msg.contains("download-model"), "{msg}");
-    assert!(msg.contains("FH_EMBED_AUTO_DOWNLOAD"), "{msg}");
+    assert!(msg.contains("EARFUL_EMBED_AUTO_DOWNLOAD"), "{msg}");
 }

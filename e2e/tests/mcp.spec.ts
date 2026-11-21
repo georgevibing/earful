@@ -8,7 +8,7 @@ test('create an API token in the UI and drive the MCP endpoint with it', async (
   await page.getByLabel('Scope').selectOption('write');
   await page.getByRole('button', { name: 'Create token' }).click();
   const token = (await page.getByTestId('new-token').locator('code').first().textContent())?.trim() ?? '';
-  expect(token).toMatch(/^fht_[0-9a-f]{64}$/);
+  expect(token).toMatch(/^eat_[0-9a-f]{64}$/);
 
   const rpc = async (method: string, params: unknown = {}, id = 1) => {
     const res = await request.post('/mcp', {
@@ -24,7 +24,7 @@ test('create an API token in the UI and drive the MCP endpoint with it', async (
     capabilities: {},
     clientInfo: { name: 'e2e', version: '1' },
   });
-  expect(init.result.serverInfo.name).toBe('feedback-harvest');
+  expect(init.result.serverInfo.name).toBe('earful');
 
   const tools = await rpc('tools/list');
   const names = tools.result.tools.map((t: { name: string }) => t.name);

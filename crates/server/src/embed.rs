@@ -47,8 +47,8 @@ impl Embedder {
                 if !auto_download {
                     bail!(
                         "Model2Vec model not found in {dir}. Download it with \
-                         `feedback-harvest download-model {repo} {dir}`, set \
-                         FH_EMBED_AUTO_DOWNLOAD=true, or use FH_EMBED_PROVIDER=hash",
+                         `earful download-model {repo} {dir}`, set \
+                         EARFUL_EMBED_AUTO_DOWNLOAD=true, or use EARFUL_EMBED_PROVIDER=hash",
                         dir = path.display()
                     );
                 }

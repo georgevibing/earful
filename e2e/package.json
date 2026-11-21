@@ -1,5 +1,5 @@
 {
-  "name": "@feedback-harvest/e2e",
+  "name": "@earful/e2e",
   "private": true,
   "type": "module",
   "scripts": {

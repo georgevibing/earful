@@ -18,7 +18,7 @@ test('floating widget works cross origin on a third party site', async ({ page, 
     route.fulfill({
       contentType: 'text/html',
       body: `<!doctype html><html><body><h1>Some app</h1>
-        <script src="${BASE_URL}/widget.js" data-fh-key="${project.ingest_key}" defer></script></body></html>`,
+        <script src="${BASE_URL}/widget.js" data-earful-key="${project.ingest_key}" defer></script></body></html>`,
     }),
   );
   await page.goto(thirdParty);

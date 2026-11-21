@@ -1,5 +1,5 @@
 {
-  "name": "Feedback Harvest",
+  "name": "Earful",
   "short_name": "Harvest",
   "description": "Self-hosted feedback and bug reports for your projects.",
   "start_url": "/admin/",

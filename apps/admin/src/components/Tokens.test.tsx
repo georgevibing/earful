@@ -5,7 +5,7 @@ import { mockFetch } from '../test-utils';
 import type { ApiToken } from '../types';
 import { Tokens } from './Tokens';
 
-const RAW = `fht_${'ab'.repeat(32)}`;
+const RAW = `eat_${'ab'.repeat(32)}`;
 
 afterEach(() => {
   cleanup();
@@ -16,27 +16,27 @@ describe('mcpSnippets', () => {
   it('uses a placeholder until a token exists', () => {
     const [cli, json] = mcpSnippets('https://fb.example.com');
     expect(cli!.code).toBe(
-      'claude mcp add --transport http feedback-harvest https://fb.example.com/mcp --header "Authorization: Bearer <TOKEN>"',
+      'claude mcp add --transport http earful https://fb.example.com/mcp --header "Authorization: Bearer <TOKEN>"',
     );
     expect(JSON.parse(json!.code)).toEqual({
       mcpServers: {
-        'feedback-harvest': { type: 'http', url: 'https://fb.example.com/mcp', headers: { Authorization: 'Bearer <TOKEN>' } },
+        'earful': { type: 'http', url: 'https://fb.example.com/mcp', headers: { Authorization: 'Bearer <TOKEN>' } },
       },
     });
-    expect(mcpSnippets('https://x', 'fht_1')[0]!.code).toContain('Bearer fht_1');
+    expect(mcpSnippets('https://x', 'eat_1')[0]!.code).toContain('Bearer eat_1');
   });
 });
 
 describe('Tokens screen', () => {
   it('lists, creates (showing the raw token once) and revokes', async () => {
     let tokens: ApiToken[] = [
-      { id: 1, name: 'old script', scope: 'read', prefix: 'fht_1234', created_at: 1_700_000_000, last_used_at: null },
+      { id: 1, name: 'old script', scope: 'read', prefix: 'eat_1234', created_at: 1_700_000_000, last_used_at: null },
     ];
     const calls = mockFetch({
       'GET /api/admin/tokens': () => ({ body: tokens }),
       'POST /api/admin/tokens': (c) => {
         const b = c.body as { name: string; scope: 'read' | 'write' };
-        const t: ApiToken = { id: 2, name: b.name, scope: b.scope, prefix: 'fht_abab', created_at: 1_700_000_100, last_used_at: null };
+        const t: ApiToken = { id: 2, name: b.name, scope: b.scope, prefix: 'eat_abab', created_at: 1_700_000_100, last_used_at: null };
         tokens = [t, ...tokens];
         return { status: 201, body: { ...t, token: RAW } };
       },
@@ -49,7 +49,7 @@ describe('Tokens screen', () => {
 
     render(<Tokens />);
     expect(await screen.findByText('old script')).toBeTruthy();
-    expect(screen.getByText('fht_1234...')).toBeTruthy();
+    expect(screen.getByText('eat_1234...')).toBeTruthy();
     expect(screen.getAllByText(/Bearer <TOKEN>/).length).toBeGreaterThan(0);
 
     fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'claude laptop' } });

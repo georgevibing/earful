@@ -83,7 +83,7 @@ async fn token_crud_never_exposes_secrets() {
     assert_eq!(r.status, StatusCode::CREATED);
     let created = r.json();
     let raw = created["token"].as_str().unwrap();
-    assert!(raw.starts_with("fht_") && raw.len() == 68);
+    assert!(raw.starts_with("eat_") && raw.len() == 68);
     assert_eq!(created["prefix"], &raw[..8]);
     assert_eq!(created["scope"], "write");
     assert!(created["last_used_at"].is_null());
@@ -139,7 +139,7 @@ async fn bearer_auth_rejects_missing_invalid_and_revoked() {
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     assert!(r.header("www-authenticate").unwrap().starts_with("Bearer"));
 
-    let r = rpc_raw(&app, &format!("fht_{}", "0".repeat(64)), ping.clone()).await;
+    let r = rpc_raw(&app, &format!("eat_{}", "0".repeat(64)), ping.clone()).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     let r = rpc_raw(&app, "garbage", ping.clone()).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
@@ -164,7 +164,7 @@ async fn failed_bearer_attempts_are_rate_limited_per_ip() {
     let app = App::admin().await;
     let good = token(&app, "read").await;
     let ping = json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" });
-    let bad = format!("fht_{}", "a".repeat(64));
+    let bad = format!("eat_{}", "a".repeat(64));
     for _ in 0..20 {
         let r = app
             .post("/mcp")
@@ -215,7 +215,7 @@ async fn initialize_negotiates_version_and_returns_session() {
         assert_eq!(v["id"], "init");
         let res = &v["result"];
         assert_eq!(res["protocolVersion"], expected);
-        assert_eq!(res["serverInfo"]["name"], "feedback-harvest");
+        assert_eq!(res["serverInfo"]["name"], "earful");
         assert!(res["capabilities"]["tools"].is_object());
         assert!(res["capabilities"]["resources"].is_object());
         assert!(res["capabilities"]["prompts"].is_object());
@@ -998,7 +998,7 @@ async fn feedback_tools_end_to_end() {
 
 #[tokio::test]
 async fn similar_falls_back_to_lexical_without_embeddings() {
-    let mut app = App::with(|c| c.embed = feedback_harvest::config::EmbedConfig::Disabled).await;
+    let mut app = App::with(|c| c.embed = earful::config::EmbedConfig::Disabled).await;
     app.login().await;
     let tok = token(&app, "write").await;
     ok(&app, &tok, "create_project", json!({ "title": "Starfall" })).await;
@@ -1055,10 +1055,7 @@ async fn resources_and_prompts() {
         .collect();
     assert_eq!(
         uris,
-        vec![
-            "feedback-harvest://projects",
-            "feedback-harvest://projects/starfall"
-        ]
+        vec!["earful://projects", "earful://projects/starfall"]
     );
 
     let templates = rpc(&app, &tok, "resources/templates/list", json!({})).await;
@@ -1075,27 +1072,27 @@ async fn resources_and_prompts() {
         let tok = tok.clone();
         async move { rpc(app, &tok, "resources/read", json!({ "uri": uri })).await }
     };
-    let v = read("feedback-harvest://projects".into()).await;
+    let v = read("earful://projects".into()).await;
     let content = &v["result"]["contents"][0];
     assert_eq!(content["mimeType"], "application/json");
     let parsed: Value = serde_json::from_str(content["text"].as_str().unwrap()).unwrap();
     assert_eq!(parsed[0]["slug"], "starfall");
 
-    let v = read("feedback-harvest://projects/starfall".into()).await;
+    let v = read("earful://projects/starfall".into()).await;
     let parsed: Value =
         serde_json::from_str(v["result"]["contents"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(parsed["open_total"], 1);
     assert_eq!(parsed["open_feedback"][0]["id"], f["id"]);
 
-    let v = read(format!("feedback-harvest://feedback/{}", f["id"])).await;
+    let v = read(format!("earful://feedback/{}", f["id"])).await;
     let parsed: Value =
         serde_json::from_str(v["result"]["contents"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(parsed["item"]["body"], "It crashed on launch");
 
     for uri in [
-        "feedback-harvest://projects/nope",
-        "feedback-harvest://feedback/999",
-        "feedback-harvest://feedback/abc",
+        "earful://projects/nope",
+        "earful://feedback/999",
+        "earful://feedback/abc",
         "other://x",
     ] {
         let v = read(uri.into()).await;
@@ -1312,7 +1309,7 @@ async fn labels_tools_crud_filtering_scopes_and_theme_prompt() {
         &app,
         &read,
         "resources/read",
-        json!({"uri":"feedback-harvest://projects/themes"}),
+        json!({"uri":"earful://projects/themes"}),
     )
     .await;
     let text = resource["result"]["contents"][0]["text"].as_str().unwrap();

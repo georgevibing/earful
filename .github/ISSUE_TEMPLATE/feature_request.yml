@@ -13,7 +13,7 @@ body:
     id: proposal
     attributes:
       label: Proposal
-      description: How could feedback-harvest solve it? API, UI or MCP sketches welcome.
+      description: How could earful solve it? API, UI or MCP sketches welcome.
     validations:
       required: true
   - type: textarea

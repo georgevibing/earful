@@ -4,13 +4,13 @@ Rust server: axum 0.8, tokio, rusqlite (bundled SQLite with FTS5), argon2, rust-
 
 ## Commands
 
-- `cargo test -p feedback-harvest` (unit tests in `src/`, HTTP tests in `tests/`)
-- `cargo clippy -p feedback-harvest --all-targets -- -D warnings`
-- `cargo run -p feedback-harvest -- serve` (reads `FH_*` env, see `src/config.rs`)
-- `printf '%s' pw | cargo run -q -p feedback-harvest -- hash-password`
-- `cargo run -q -p feedback-harvest -- solve <challenge> <bits>`
-- `cargo run -q -p feedback-harvest -- download-model` (Model2Vec into `models/potion-base-8M`, gitignored)
-- `FH_TEST_MODEL2VEC_PATH=$PWD/models/potion-base-8M cargo test --release --test model2vec -- --nocapture` (real-model quality checks, skipped when unset)
+- `cargo test -p earful` (unit tests in `src/`, HTTP tests in `tests/`)
+- `cargo clippy -p earful --all-targets -- -D warnings`
+- `cargo run -p earful -- serve` (reads `EARFUL_*` env, see `src/config.rs`)
+- `printf '%s' pw | cargo run -q -p earful -- hash-password`
+- `cargo run -q -p earful -- solve <challenge> <bits>`
+- `cargo run -q -p earful -- download-model` (Model2Vec into `models/potion-base-8M`, gitignored)
+- `EARFUL_TEST_MODEL2VEC_PATH=$PWD/models/potion-base-8M cargo test --release --test model2vec -- --nocapture` (real-model quality checks, skipped when unset)
 
 ## Gotchas
 
@@ -23,4 +23,4 @@ Rust server: axum 0.8, tokio, rusqlite (bundled SQLite with FTS5), argon2, rust-
 - Vectors in `VectorIndex` must stay in sync with the `embeddings` table (insert, delete, project delete, reindex).
 - Public submit must not leak outcome: silent drops and quarantines still return `202`.
 - MCP (`src/mcp/`): add a tool by adding a `ToolDef` in `tools.rs` and a match arm in `run` that calls an `op_*` from `routes/admin.rs`. Return validation problems as `Err(String)` starting with the error code (they become `isError` results), and cover it in `tests/mcp.rs`.
-- `FH_MCP_URL=http://127.0.0.1:8080/mcp FH_MCP_TOKEN=fht_... cargo run -q -p feedback-harvest -- mcp-stdio` exercises the stdio bridge.
+- `EARFUL_MCP_URL=http://127.0.0.1:8080/mcp EARFUL_MCP_TOKEN=eat_... cargo run -q -p earful -- mcp-stdio` exercises the stdio bridge.

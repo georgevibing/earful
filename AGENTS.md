@@ -4,7 +4,7 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 
 ## Repo map
 
-- `crates/server/` Rust server, binary `feedback-harvest` (`serve`, `hash-password`, `healthcheck`, `solve`, `download-model`, `mcp-stdio`)
+- `crates/server/` Rust server, binary `earful` (`serve`, `hash-password`, `healthcheck`, `solve`, `download-model`, `mcp-stdio`)
   - `src/routes/` HTTP handlers (`public.rs` ingestion + hosted form, `admin.rs`, `labels.rs` shared label operations, `assets.rs`)
   - `src/mcp/` MCP server (`mod.rs` JSON-RPC transport, `tools.rs`, `resources.rs` resources + prompts, `bridge.rs` stdio bridge), `src/tokens.rs` API tokens
   - `src/db.rs` schema + migrations, `src/pow.rs` proof of work, `src/spam.rs` heuristics + client IP, `src/search.rs` keyword/fuzzy/RRF, `src/embed.rs` embedders + vector index, `src/worker.rs` background jobs
@@ -25,13 +25,13 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 | --- | --- |
 | Build web assets | `pnpm build:web` (widget, then admin) |
 | Release build | `pnpm build` (web first: release builds embed `dist/` at compile time) |
-| Run server | `pnpm dev:server` (needs `FH_ADMIN_PASSWORD_HASH`, `FH_COOKIE_SECURE=false` for http) |
+| Run server | `pnpm dev:server` (needs `EARFUL_ADMIN_PASSWORD_HASH`, `EARFUL_COOKIE_SECURE=false` for http) |
 | Admin dev server | `pnpm dev:admin` (proxies `/api` to `127.0.0.1:8080`) |
-| Rust tests | `cargo test --workspace` or `cargo test -p feedback-harvest <name>` |
+| Rust tests | `cargo test --workspace` or `cargo test -p earful <name>` |
 | Rust lint | `pnpm lint:rust` (rustfmt check + clippy `-D warnings`) |
-| Web tests | `pnpm test:web`, or `pnpm --filter @feedback-harvest/widget test` |
+| Web tests | `pnpm test:web`, or `pnpm --filter @earful/widget test` |
 | Typecheck | `pnpm typecheck` |
-| E2E | `pnpm test:e2e` (first time: `pnpm --filter @feedback-harvest/e2e exec playwright install chromium`) |
+| E2E | `pnpm test:e2e` (first time: `pnpm --filter @earful/e2e exec playwright install chromium`) |
 | Everything | `pnpm check` (run before declaring work done) |
 
 ## Invariants (do not break)
@@ -45,7 +45,7 @@ Self-hosted feedback and bug report collector: one Rust binary (axum + SQLite) w
 - FTS5 tables `feedback_fts` and `feedback_tri` are kept in sync by triggers. Write to `feedback` only, never to the FTS tables directly.
 - The PoW algorithm is implemented in Rust (`pow.rs`) and TypeScript (`packages/widget`). Both test the same vector from `docs/api.md`; change both together.
 - `docs/api.md` is the contract. Update it in the same change as any API change.
-- Without `FH_ADMIN_PASSWORD_HASH`, every login fails. Keep auth fail-closed.
+- Without `EARFUL_ADMIN_PASSWORD_HASH`, every login fails. Keep auth fail-closed.
 - MCP tools (`src/mcp/tools.rs`) call the shared `op_*` functions in `routes/admin.rs` or `routes/labels.rs` (and `public::op_create_feedback`). Never duplicate SQL or validation in MCP code; extract a shared op instead.
 - Every MCP write tool sets `write: true` and is therefore hidden from and refused for `read` tokens. Destructive tools require a confirmation argument and `destructive: true`.
 - `/mcp` always requires a valid bearer token (`tokens::authenticate`). API tokens are stored only as SHA-256; never return or log raw tokens after creation.

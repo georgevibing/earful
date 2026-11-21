@@ -8,7 +8,7 @@ use axum::{
     body::Body,
     http::{HeaderMap, Method, Request, StatusCode, header},
 };
-use feedback_harvest::{auth, build_router, config::Config, pow, state::AppState};
+use earful::{auth, build_router, config::Config, pow, state::AppState};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -251,11 +251,7 @@ impl App {
     }
 
     pub async fn embed_all(&self) {
-        while feedback_harvest::worker::embed_pending(&self.state)
-            .await
-            .unwrap()
-            > 0
-        {}
+        while earful::worker::embed_pending(&self.state).await.unwrap() > 0 {}
     }
 
     pub async fn sql_i64(&self, sql: &'static str) -> i64 {

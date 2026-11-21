@@ -1190,7 +1190,9 @@ async fn run(ctx: &Ctx, name: &str, a: &Args<'_>) -> ToolResult {
         }
         "reindex_embeddings" => {
             if !state.embedder.enabled() {
-                return Err("unavailable: embeddings are disabled (FH_EMBED_PROVIDER=none)".into());
+                return Err(
+                    "unavailable: embeddings are disabled (EARFUL_EMBED_PROVIDER=none)".into(),
+                );
             }
             admin::op_reindex(state).await.map_err(app_err)?;
             Ok((
@@ -1314,16 +1316,16 @@ async fn snippets(ctx: &Ctx, a: &Args<'_>) -> ToolResult {
     let slug = &p.project.slug;
     let hosted = format!("{base}/s/{slug}");
     let floating =
-        format!("<script src=\"{base}/widget.js\" data-fh-key=\"{key}\" defer></script>");
+        format!("<script src=\"{base}/widget.js\" data-earful-key=\"{key}\" defer></script>");
     let inline = format!(
-        "<div data-fh-inline data-fh-key=\"{key}\" data-fh-project=\"{}\"></div>\n<script src=\"{base}/widget.js\" defer></script>",
+        "<div data-earful-inline data-earful-key=\"{key}\" data-earful-project=\"{}\"></div>\n<script src=\"{base}/widget.js\" defer></script>",
         crate::routes::html_escape(&p.project.title)
     );
     let esm = format!(
-        "import {{ createClient }} from '@feedback-harvest/widget';\n\nconst fh = createClient({{ endpoint: '{base}', key: '{key}' }});\nfh.prepare(); // start solving the challenge when the dialog opens\nawait fh.submit({{ kind: 'bug', title: 'Crash on save', body: 'Steps...', meta: {{ version: '1.2.3' }} }});"
+        "import {{ createClient }} from '@earful/widget';\n\nconst fh = createClient({{ endpoint: '{base}', key: '{key}' }});\nfh.prepare(); // start solving the challenge when the dialog opens\nawait fh.submit({{ kind: 'bug', title: 'Crash on save', body: 'Steps...', meta: {{ version: '1.2.3' }} }});"
     );
     let curl = format!(
-        "CH=$(curl -s '{base}/api/v1/challenge?key={key}')\nTOKEN=$(echo \"$CH\" | jq -r .challenge); BITS=$(echo \"$CH\" | jq -r .bits)\nNONCE=$(feedback-harvest solve \"$TOKEN\" \"$BITS\")\ncurl -s -X POST '{base}/api/v1/feedback' -H 'content-type: application/json' \\\n  -d \"{{\\\"key\\\":\\\"{key}\\\",\\\"kind\\\":\\\"bug\\\",\\\"body\\\":\\\"It crashed\\\",\\\"challenge\\\":\\\"$TOKEN\\\",\\\"nonce\\\":\\\"$NONCE\\\"}}\""
+        "CH=$(curl -s '{base}/api/v1/challenge?key={key}')\nTOKEN=$(echo \"$CH\" | jq -r .challenge); BITS=$(echo \"$CH\" | jq -r .bits)\nNONCE=$(earful solve \"$TOKEN\" \"$BITS\")\ncurl -s -X POST '{base}/api/v1/feedback' -H 'content-type: application/json' \\\n  -d \"{{\\\"key\\\":\\\"{key}\\\",\\\"kind\\\":\\\"bug\\\",\\\"body\\\":\\\"It crashed\\\",\\\"challenge\\\":\\\"$TOKEN\\\",\\\"nonce\\\":\\\"$NONCE\\\"}}\""
     );
     let structured = json!({
         "project": slug,
@@ -1334,7 +1336,7 @@ async fn snippets(ctx: &Ctx, a: &Args<'_>) -> ToolResult {
         "widget_inline": inline,
         "esm_client": esm,
         "curl": curl,
-        "protocol_docs": "docs/api.md and docs/integrations.md in the feedback-harvest repo",
+        "protocol_docs": "docs/api.md and docs/integrations.md in the earful repo",
     });
     let mut text = format!(
         "Integration for {slug} (ingest key {key}, public by design, rotate if abused){}\n\n",

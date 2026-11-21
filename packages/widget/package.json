@@ -1,7 +1,7 @@
 {
-  "name": "@feedback-harvest/widget",
+  "name": "@earful/widget",
   "version": "0.1.0",
-  "description": "Embeddable feedback widget and tiny client for feedback-harvest",
+  "description": "Embeddable feedback widget and tiny client for earful",
   "license": "MIT",
   "type": "module",
   "sideEffects": [

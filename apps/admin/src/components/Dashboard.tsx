@@ -119,7 +119,7 @@ export function Dashboard() {
             </section>
             <section class="card">
               <h2>Semantic index</h2>
-              {emb && !emb.enabled && <div class="muted small">Embeddings are disabled (FH_EMBED_PROVIDER=none).</div>}
+              {emb && !emb.enabled && <div class="muted small">Embeddings are disabled (EARFUL_EMBED_PROVIDER=none).</div>}
               {emb && emb.enabled && (
                 <div class="stack" style={{ gap: '8px' }}>
                   <div class="small">

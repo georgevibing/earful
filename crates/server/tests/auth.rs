@@ -37,7 +37,7 @@ async fn admin_routes_require_a_session() {
     // A forged cookie is not a session.
     let r = app
         .get("/api/admin/me")
-        .header("cookie", &format!("fh_session={}", "a".repeat(64)))
+        .header("cookie", &format!("earful_session={}", "a".repeat(64)))
         .send()
         .await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
@@ -61,7 +61,7 @@ async fn login_sets_a_hardened_cookie_and_logout_revokes_it() {
         .await;
     assert_eq!(r.status, StatusCode::NO_CONTENT);
     let cookie = r.header("set-cookie").unwrap().to_string();
-    assert!(cookie.starts_with("fh_session="), "{cookie}");
+    assert!(cookie.starts_with("earful_session="), "{cookie}");
     assert!(cookie.contains("HttpOnly"), "{cookie}");
     assert!(cookie.contains("SameSite=Strict"), "{cookie}");
     assert!(cookie.contains("Path=/"), "{cookie}");

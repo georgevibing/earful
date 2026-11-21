@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClient, FeedbackHarvestError } from './client';
+import { createClient, EarfulError } from './client';
 import { workBits } from './pow';
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -26,11 +26,11 @@ describe('createClient', () => {
   it('fetches a challenge, solves it and posts the expected body', async () => {
     const c = challenge();
     const server = mockServer([() => json(200, c), () => json(202, { ok: true })]);
-    const client = createClient({ endpoint: 'https://fb.example.com/', key: 'fhk_abc', fetch: server.fetch });
+    const client = createClient({ endpoint: 'https://fb.example.com/', key: 'ear_abc', fetch: server.fetch });
 
     await client.submit({ kind: 'feedback', title: 'Hi', body: 'Great game', rating: 5, meta: { v: '1' } });
 
-    expect(server.calls[0]!.url).toBe('https://fb.example.com/api/v1/challenge?key=fhk_abc');
+    expect(server.calls[0]!.url).toBe('https://fb.example.com/api/v1/challenge?key=ear_abc');
     expect(server.calls[0]!.init?.credentials).toBe('omit');
     const post = server.calls[1]!;
     expect(post.url).toBe('https://fb.example.com/api/v1/feedback');
@@ -38,7 +38,7 @@ describe('createClient', () => {
     expect(new Headers(post.init?.headers).get('content-type')).toBe('application/json');
     const body = JSON.parse(String(post.init?.body));
     expect(body).toMatchObject({
-      key: 'fhk_abc',
+      key: 'ear_abc',
       kind: 'feedback',
       title: 'Hi',
       body: 'Great game',
@@ -115,7 +115,7 @@ describe('createClient', () => {
     ]);
     const client = createClient({ endpoint: 'https://x', key: 'k', fetch: server.fetch });
     const err = await client.submit({ kind: 'bug', body: 'abc' }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(FeedbackHarvestError);
+    expect(err).toBeInstanceOf(EarfulError);
     expect(err).toMatchObject({ code: 'rate_limited', status: 429, retryAfter: 42, message: 'slow down' });
   });
 

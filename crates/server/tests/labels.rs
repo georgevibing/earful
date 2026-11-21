@@ -415,7 +415,7 @@ async fn labels_require_session_and_reject_cross_origin_writes() {
 
 #[test]
 fn labels_migration_preserves_existing_data_and_persists() {
-    use feedback_harvest::db;
+    use earful::db;
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("upgrade.db");
     // Build the exact previous schema from the append-only migration source.

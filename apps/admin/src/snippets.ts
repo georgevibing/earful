@@ -18,12 +18,12 @@ export function integrationSnippets(p: Project, origin: string): Snippet[] {
     {
       title: 'Floating widget',
       description: 'Adds a feedback button to any web page.',
-      code: `<script src="${origin}/widget.js" data-fh-key="${key}" defer></script>`,
+      code: `<script src="${origin}/widget.js" data-earful-key="${key}" defer></script>`,
     },
     {
       title: 'Inline form',
       description: 'Renders the form inside an element you control.',
-      code: `<div data-fh-inline data-fh-key="${key}"></div>\n<script src="${origin}/widget.js" defer></script>`,
+      code: `<div data-earful-inline data-earful-key="${key}"></div>\n<script src="${origin}/widget.js" defer></script>`,
     },
     {
       title: 'curl / any HTTP client',
@@ -34,7 +34,7 @@ export function integrationSnippets(p: Project, origin: string): Snippet[] {
         `CH=$(curl -s "$BASE/api/v1/challenge?key=$KEY")`,
         `TOKEN=$(echo "$CH" | jq -r .challenge)`,
         `BITS=$(echo "$CH" | jq -r .bits)`,
-        `NONCE=$(feedback-harvest solve "$TOKEN" "$BITS")`,
+        `NONCE=$(earful solve "$TOKEN" "$BITS")`,
         `curl -s -X POST "$BASE/api/v1/feedback" -H 'Content-Type: application/json' \\`,
         `  -d "{\\"key\\":\\"$KEY\\",\\"kind\\":\\"bug\\",\\"title\\":\\"Test\\",\\"body\\":\\"Hello from curl\\",\\"challenge\\":\\"$TOKEN\\",\\"nonce\\":\\"$NONCE\\"}"`,
       ].join('\n'),
@@ -49,7 +49,7 @@ export function mcpSnippets(origin: string, token: string = TOKEN_PLACEHOLDER): 
   const url = `${origin}/mcp`;
   const config = {
     mcpServers: {
-      'feedback-harvest': {
+      'earful': {
         type: 'http',
         url,
         headers: { Authorization: `Bearer ${token}` },
@@ -60,7 +60,7 @@ export function mcpSnippets(origin: string, token: string = TOKEN_PLACEHOLDER): 
     {
       title: 'Claude Code',
       description: 'Run once in a terminal.',
-      code: `claude mcp add --transport http feedback-harvest ${url} --header "Authorization: Bearer ${token}"`,
+      code: `claude mcp add --transport http earful ${url} --header "Authorization: Bearer ${token}"`,
     },
     {
       title: 'Generic MCP config (JSON)',

@@ -1,10 +1,10 @@
 /**
  * IIFE entry for `/widget.js`. Auto initialises:
- *  - inline forms in every `[data-fh-inline]` element, and
- *  - a floating launcher when the script tag itself carries `data-fh-key`.
- * Also exposes `window.FeedbackHarvest`.
+ *  - inline forms in every `[data-earful-inline]` element, and
+ *  - a floating launcher when the script tag itself carries `data-earful-key`.
+ * Also exposes `window.Earful`.
  */
-import { createClient, FeedbackHarvestError } from './client';
+import { createClient, EarfulError } from './client';
 import { mount, type MountedForm, type MountOptions } from './form';
 import { applyStyles } from './styles';
 import type { FeedbackKind } from './client';
@@ -20,8 +20,14 @@ function scriptOrigin(): string {
   return location.origin;
 }
 
+/** Reads `data-earful-<name>`, falling back to the pre-rename `data-fh-<name>`. */
+function data(el: HTMLElement | null | undefined, name: string): string | undefined {
+  if (!el) return undefined;
+  return el.dataset[`earful${name}`] ?? el.dataset[`fh${name}`];
+}
+
 function defaultEndpoint(): string {
-  return script?.dataset.fhEndpoint || scriptOrigin();
+  return data(script, 'Endpoint') || scriptOrigin();
 }
 
 function parseMeta(raw: string | undefined): Record<string, unknown> | undefined {
@@ -39,16 +45,17 @@ function parseKind(raw: string | undefined): FeedbackKind | undefined {
 }
 
 function optionsFrom(el: HTMLElement, fallbackKey?: string): MountOptions | null {
-  const key = el.dataset.fhKey || fallbackKey;
+  const key = data(el, 'Key') || fallbackKey;
   if (!key) {
-    console.warn('[feedback-harvest] missing data-fh-key on', el);
+    console.warn('[earful] missing data-earful-key on', el);
     return null;
   }
-  const opts: MountOptions = { key, endpoint: el.dataset.fhEndpoint || defaultEndpoint() };
-  if (el.dataset.fhProject) opts.project = el.dataset.fhProject;
-  const kind = parseKind(el.dataset.fhKind);
+  const opts: MountOptions = { key, endpoint: data(el, 'Endpoint') || defaultEndpoint() };
+  const project = data(el, 'Project');
+  if (project) opts.project = project;
+  const kind = parseKind(data(el, 'Kind'));
   if (kind) opts.kind = kind;
-  const meta = parseMeta(el.dataset.fhMeta);
+  const meta = parseMeta(data(el, 'Meta'));
   if (meta) opts.meta = meta;
   return opts;
 }
@@ -56,11 +63,11 @@ function optionsFrom(el: HTMLElement, fallbackKey?: string): MountOptions | null
 /** Mounts inline forms that have not been mounted yet. */
 export function mountInline(scope: ParentNode = document): MountedForm[] {
   const mounted: MountedForm[] = [];
-  for (const el of Array.from(scope.querySelectorAll<HTMLElement>('[data-fh-inline]'))) {
-    if (el.dataset.fhMounted) continue;
-    const opts = optionsFrom(el, script?.dataset.fhKey);
+  for (const el of Array.from(scope.querySelectorAll<HTMLElement>('[data-earful-inline], [data-fh-inline]'))) {
+    if (el.dataset.earfulMounted) continue;
+    const opts = optionsFrom(el, data(script, 'Key'));
     if (!opts) continue;
-    el.dataset.fhMounted = 'true';
+    el.dataset.earfulMounted = 'true';
     mounted.push(mount(el, opts));
   }
   return mounted;
@@ -74,21 +81,21 @@ export interface LauncherOptions extends MountOptions {
 /** Floating button that toggles a feedback panel. */
 export function mountLauncher(opts: LauncherOptions): { open(): void; close(): void; destroy(): void } {
   const host = document.createElement('div');
-  host.setAttribute('data-fh-launcher', '');
+  host.setAttribute('data-earful-launcher', '');
   document.body.append(host);
   const root = host.attachShadow({ mode: 'open' });
   applyStyles(root);
 
-  const pos = opts.position === 'bottom-left' ? 'fh-pos-left' : 'fh-pos-right';
+  const pos = opts.position === 'bottom-left' ? 'earful-pos-left' : 'earful-pos-right';
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = `fh-launcher ${pos}`;
+  button.className = `earful-launcher ${pos}`;
   button.textContent = opts.label || 'Feedback';
   button.setAttribute('aria-expanded', 'false');
   button.setAttribute('aria-haspopup', 'dialog');
 
   const panelHost = document.createElement('div');
-  panelHost.className = `fh-panel ${pos}`;
+  panelHost.className = `earful-panel ${pos}`;
   panelHost.hidden = true;
   panelHost.setAttribute('role', 'dialog');
   panelHost.setAttribute('aria-label', opts.project ? `Feedback for ${opts.project}` : 'Send feedback');
@@ -134,12 +141,13 @@ export function mountLauncher(opts: LauncherOptions): { open(): void; close(): v
 
 function autoInit() {
   mountInline();
-  if (script?.dataset.fhKey) {
+  if (script && data(script, 'Key')) {
     const opts = optionsFrom(script);
     if (opts) {
-      const position = script.dataset.fhPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right';
+      const position = data(script, 'Position') === 'bottom-left' ? 'bottom-left' : 'bottom-right';
       const launcher: LauncherOptions = { ...opts, position };
-      if (script.dataset.fhLabel) launcher.label = script.dataset.fhLabel;
+      const label = data(script, 'Label');
+      if (label) launcher.label = label;
       mountLauncher(launcher);
     }
   }
@@ -147,18 +155,18 @@ function autoInit() {
 
 declare global {
   interface Window {
-    FeedbackHarvest?: {
+    Earful?: {
       createClient: typeof createClient;
       mount: typeof mount;
       mountInline: typeof mountInline;
       mountLauncher: typeof mountLauncher;
-      FeedbackHarvestError: typeof FeedbackHarvestError;
+      EarfulError: typeof EarfulError;
     };
   }
 }
 
 if (typeof window !== 'undefined') {
-  window.FeedbackHarvest = { createClient, mount, mountInline, mountLauncher, FeedbackHarvestError };
+  window.Earful = { createClient, mount, mountInline, mountLauncher, EarfulError };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', autoInit, { once: true });
   } else {

@@ -1,4 +1,4 @@
-export { createClient, FeedbackHarvestError } from './client';
+export { createClient, EarfulError } from './client';
 export type { ClientOptions, FeedbackClient, FeedbackInput, FeedbackKind } from './client';
 export { leadingZeroBits, solve, workBits } from './pow';
 export type { SolveOptions } from './pow';

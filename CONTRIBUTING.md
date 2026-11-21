@@ -11,7 +11,7 @@ Thanks for taking the time. This is a small personal project, so the process is 
 pnpm install
 pnpm build:web
 cargo build
-pnpm --filter @feedback-harvest/e2e exec playwright install chromium   # first time only
+pnpm --filter @earful/e2e exec playwright install chromium   # first time only
 ```
 
 See the Development section of the [README](README.md#development) for running the server and the admin UI locally.

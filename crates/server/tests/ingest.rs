@@ -2,7 +2,7 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{App, ids, key_of};
-use feedback_harvest::{crypto, db::now_ms, pow};
+use earful::{crypto, db::now_ms, pow};
 use serde_json::{Value, json};
 
 async fn setup() -> (App, String, i64) {
@@ -54,7 +54,7 @@ async fn key_can_come_from_header_and_title_is_derived() {
         .post("/api/v1/feedback")
         .anonymous()
         .ip("2.2.2.2")
-        .header("x-fh-key", &key)
+        .header("x-earful-key", &key)
         .json(json!({ "kind": "feedback", "body": "\n  Love the music\nand the art", "challenge": token, "nonce": nonce.parse::<u64>().unwrap() }))
         .send()
         .await;
@@ -64,10 +64,27 @@ async fn key_can_come_from_header_and_title_is_derived() {
 }
 
 #[tokio::test]
+async fn pre_rename_key_header_is_still_accepted() {
+    let (app, key, _) = setup().await;
+    let ch = app.challenge(&key, "2.2.2.3").await.json();
+    let token = ch["challenge"].as_str().unwrap();
+    let nonce = pow::solve(token, ch["bits"].as_u64().unwrap() as u32);
+    let r = app
+        .post("/api/v1/feedback")
+        .anonymous()
+        .ip("2.2.2.3")
+        .header("x-fh-key", &key)
+        .json(json!({ "kind": "bug", "body": "Legacy header still works", "challenge": token, "nonce": nonce.parse::<u64>().unwrap() }))
+        .send()
+        .await;
+    assert_eq!(r.status, StatusCode::ACCEPTED, "{}", r.text);
+}
+
+#[tokio::test]
 async fn unknown_key_and_paused_project() {
     let (app, key, pid) = setup().await;
     assert_eq!(
-        app.challenge("fhk_nope", "2.2.2.2").await.status,
+        app.challenge("ear_nope", "2.2.2.2").await.status,
         StatusCode::NOT_FOUND
     );
     let r = app.get("/api/v1/challenge").anonymous().send().await;

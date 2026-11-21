@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       sourcemap: false,
       minify: true,
       lib: widget
-        ? { entry: 'src/widget.ts', formats: ['iife'], name: 'FeedbackHarvestWidget', fileName: () => 'widget.js' }
+        ? { entry: 'src/widget.ts', formats: ['iife'], name: 'EarfulWidget', fileName: () => 'widget.js' }
         : { entry: 'src/index.ts', formats: ['es'], fileName: () => 'client.js' },
       rollupOptions: widget ? {} : { external: [/^@noble\/hashes/] },
     },

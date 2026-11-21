@@ -20,7 +20,7 @@ use crate::{
     state::AppState,
 };
 
-pub const SESSION_COOKIE: &str = "fh_session";
+pub const SESSION_COOKIE: &str = "earful_session";
 
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
     Argon2::default()
@@ -39,7 +39,7 @@ pub fn verify_password(configured: Option<&str>, password: &str) -> bool {
         None => (DUMMY.as_str(), false),
     };
     let Ok(parsed) = PasswordHash::new(hash) else {
-        tracing::error!("FH_ADMIN_PASSWORD_HASH is not a valid argon2 PHC string");
+        tracing::error!("EARFUL_ADMIN_PASSWORD_HASH is not a valid argon2 PHC string");
         return false;
     };
     let ok = Argon2::default()

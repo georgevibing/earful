@@ -34,7 +34,8 @@ fn ingest_key(headers: &HeaderMap, from_body: Option<&str>) -> Option<String> {
         .map(str::to_string)
         .or_else(|| {
             headers
-                .get("x-fh-key")
+                .get("x-earful-key")
+                .or_else(|| headers.get("x-fh-key")) // pre-rename clients
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string)
         })
@@ -541,7 +542,7 @@ pub async fn hosted(
         };
         format!(
             "<h1>{t}</h1>{desc}<p class=\"lead\">Found a bug or have an idea? Tell us below.</p>\
-             <div data-fh-inline data-fh-key=\"{}\" data-fh-project=\"{t}\"></div>\
+             <div data-earful-inline data-earful-key=\"{}\" data-earful-project=\"{t}\"></div>\
              <script src=\"/widget.js\" defer></script>",
             html_escape(&key)
         )
@@ -552,7 +553,7 @@ pub async fn hosted(
     };
     let summary = description.split_whitespace().collect::<Vec<_>>().join(" ");
     let meta = Meta {
-        title: format!("Send feedback: {title} | Feedback Harvest"),
+        title: format!("Send feedback: {title} | Earful"),
         og_title: format!("Send feedback: {title}"),
         description: if summary.is_empty() {
             format!("Report a bug or share feedback about {title}.")
@@ -576,9 +577,9 @@ struct Meta {
 impl Meta {
     fn plain(title: &str) -> Self {
         Self {
-            title: format!("{title} | Feedback Harvest"),
+            title: format!("{title} | Earful"),
             og_title: title.to_string(),
-            description: "Feedback Harvest".into(),
+            description: "Earful".into(),
         }
     }
 }
@@ -596,7 +597,7 @@ fn page(meta: &Meta, content: &str) -> String {
          <link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">\
          <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">\
          <meta property=\"og:type\" content=\"website\">\
-         <meta property=\"og:site_name\" content=\"Feedback Harvest\">\
+         <meta property=\"og:site_name\" content=\"Earful\">\
          <meta property=\"og:title\" content=\"{og}\">\
          <meta property=\"og:description\" content=\"{desc}\">\
          <meta property=\"og:image\" content=\"/admin/og.png\">\
@@ -610,8 +611,8 @@ fn page(meta: &Meta, content: &str) -> String {
          footer{{max-width:40rem;margin:2.5rem auto 0;font-size:.85rem;opacity:.7}}\
          footer a{{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}}\
          </style></head><body><main>{content}</main>\
-         <footer><a href=\"https://github.com/georgevibing/feedback-harvest\" rel=\"noopener\">\
-         <img src=\"/favicon.svg\" alt=\"\" width=\"16\" height=\"16\">Powered by Feedback Harvest</a></footer>\
+         <footer><a href=\"https://github.com/georgevibing/earful\" rel=\"noopener\">\
+         <img src=\"/favicon.svg\" alt=\"\" width=\"16\" height=\"16\">Powered by Earful</a></footer>\
          </body></html>",
         title = html_escape(&meta.title),
         og = html_escape(&meta.og_title),

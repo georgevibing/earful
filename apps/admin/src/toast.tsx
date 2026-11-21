@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
-const EVENT = 'fh-toast';
+const EVENT = 'earful-toast';
 
 /** Shows a short, transient message at the bottom of the screen. */
 export function toast(message: string): void {

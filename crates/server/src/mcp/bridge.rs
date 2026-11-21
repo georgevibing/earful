@@ -1,4 +1,4 @@
-//! `feedback-harvest mcp-stdio`: bridges a stdio MCP client to a remote `/mcp`.
+//! `earful mcp-stdio`: bridges a stdio MCP client to a remote `/mcp`.
 //!
 //! Reads newline delimited JSON-RPC from stdin, forwards each message over
 //! HTTPS with the bearer token and writes the reply to stdout. Logs go to stderr.
@@ -10,18 +10,18 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 pub async fn run() -> Result<()> {
-    let url = std::env::var("FH_MCP_URL")
-        .context("set FH_MCP_URL, e.g. https://feedback.example.com/mcp")?;
-    let token = match std::env::var("FH_MCP_TOKEN_FILE") {
-        Ok(path) => std::fs::read_to_string(&path)
-            .with_context(|| format!("reading FH_MCP_TOKEN_FILE {path}"))?
+    let url = crate::config::var("EARFUL_MCP_URL")
+        .context("set EARFUL_MCP_URL, e.g. https://feedback.example.com/mcp")?;
+    let token = match crate::config::var("EARFUL_MCP_TOKEN_FILE") {
+        Some(path) => std::fs::read_to_string(&path)
+            .with_context(|| format!("reading EARFUL_MCP_TOKEN_FILE {path}"))?
             .trim()
             .to_string(),
-        Err(_) => std::env::var("FH_MCP_TOKEN")
-            .context("set FH_MCP_TOKEN (or FH_MCP_TOKEN_FILE) to an fht_ token")?,
+        None => crate::config::var("EARFUL_MCP_TOKEN")
+            .context("set EARFUL_MCP_TOKEN (or EARFUL_MCP_TOKEN_FILE) to an eat_ token")?,
     };
     if !url.starts_with("https://") && !is_loopback(&url) {
-        bail!("FH_MCP_URL must use https:// (plain http is only allowed for localhost)");
+        bail!("EARFUL_MCP_URL must use https:// (plain http is only allowed for localhost)");
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(60))
@@ -94,7 +94,7 @@ pub async fn run() -> Result<()> {
 }
 
 fn error(id: Value, message: &str) -> Value {
-    eprintln!("feedback-harvest mcp-stdio: {message}");
+    eprintln!("earful mcp-stdio: {message}");
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": message } })
 }
 

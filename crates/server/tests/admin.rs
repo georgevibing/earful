@@ -20,7 +20,7 @@ async fn project_crud_and_validation() {
     assert_eq!(p["slug"], "my-cool-game");
     assert_eq!(p["project_type"], "game");
     assert_eq!(p["accepting"], true);
-    assert!(p["ingest_key"].as_str().unwrap().starts_with("fhk_"));
+    assert!(p["ingest_key"].as_str().unwrap().starts_with("ear_"));
     assert_eq!(p["ingest_key"].as_str().unwrap().len(), 36);
     assert_eq!(p["stats"]["total"], 0);
     let id = p["id"].as_i64().unwrap();
@@ -346,7 +346,7 @@ async fn list_filters_and_pagination() {
     assert_eq!(page1["total"], 5);
     assert!(ids(&page1).iter().all(|id| !ids(&page2).contains(id)));
 
-    let now = feedback_harvest::db::now();
+    let now = earful::db::now();
     assert_eq!(
         app.feedback(&format!("from={}", now + 100)).await["total"],
         0
@@ -591,7 +591,7 @@ async fn hybrid_search_combines_signals() {
 
 #[tokio::test]
 async fn semantic_falls_back_when_embeddings_disabled() {
-    let mut app = App::with(|c| c.embed = feedback_harvest::config::EmbedConfig::Disabled).await;
+    let mut app = App::with(|c| c.embed = earful::config::EmbedConfig::Disabled).await;
     app.login().await;
     let key = key_of(&app.create_project("A").await);
     app.submit_ok(
@@ -613,7 +613,7 @@ async fn semantic_falls_back_when_embeddings_disabled() {
 #[tokio::test]
 async fn semantic_falls_back_when_provider_fails() {
     let mut app = App::with(|c| {
-        c.embed = feedback_harvest::config::EmbedConfig::OpenAi {
+        c.embed = earful::config::EmbedConfig::OpenAi {
             url: "http://127.0.0.1:9".into(),
             model: "m".into(),
             api_key: None,

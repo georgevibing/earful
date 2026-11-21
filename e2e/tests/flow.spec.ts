@@ -14,7 +14,7 @@ test('create a project, submit via hosted page, find it with fuzzy search, triag
   await page.getByLabel(/^Slug/).fill(slug);
   await page.getByLabel('Type').selectOption('game');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByTestId('ingest-key')).toContainText('fhk_');
+  await expect(page.getByTestId('ingest-key')).toContainText('ear_');
 
   // A player submits a bug report through the hosted page (real PoW in the browser).
   const player = await page.context().newPage();

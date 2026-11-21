@@ -1,6 +1,6 @@
-# @feedback-harvest/widget
+# @earful/widget
 
-Browser side of feedback-harvest. It ships two builds:
+Browser side of earful. It ships two builds:
 
 - `dist/widget.js`: a self contained IIFE (about 22 KB raw, 9 KB gzip) that the server embeds and serves at `/widget.js`. Drop it on a page and it renders a feedback form.
 - `dist/client.js`: a small ESM client (proof of work solver and submit logic) for when you want your own UI.
@@ -14,35 +14,35 @@ Add the script tag with your project's ingest key. A button appears in the corne
 ```html
 <script
   src="https://feedback.example.com/widget.js"
-  data-fh-key="fhk_your_ingest_key"
-  data-fh-label="Feedback"
-  data-fh-position="bottom-right"
+  data-earful-key="ear_your_ingest_key"
+  data-earful-label="Feedback"
+  data-earful-position="bottom-right"
   defer
 ></script>
 ```
 
 | Attribute | Default | Meaning |
 | --- | --- | --- |
-| `data-fh-key` | required | Project ingest key (public by design). |
-| `data-fh-label` | `Feedback` | Button text. |
-| `data-fh-position` | `bottom-right` | `bottom-right` or `bottom-left`. |
-| `data-fh-endpoint` | origin of the script `src` | Server base URL, if the script is served from somewhere else. |
-| `data-fh-project` | none | Project name shown in the heading. |
-| `data-fh-kind` | `feedback` | Initially selected type, `bug` or `feedback`. |
-| `data-fh-meta` | none | JSON object merged into the submitted `meta`, e.g. `{"version":"1.4.2"}`. |
+| `data-earful-key` | required | Project ingest key (public by design). |
+| `data-earful-label` | `Feedback` | Button text. |
+| `data-earful-position` | `bottom-right` | `bottom-right` or `bottom-left`. |
+| `data-earful-endpoint` | origin of the script `src` | Server base URL, if the script is served from somewhere else. |
+| `data-earful-project` | none | Project name shown in the heading. |
+| `data-earful-kind` | `feedback` | Initially selected type, `bug` or `feedback`. |
+| `data-earful-meta` | none | JSON object merged into the submitted `meta`, e.g. `{"version":"1.4.2"}`. |
 
 Escape closes the panel and returns focus to the button.
 
 ## Inline form
 
-Put a container anywhere on the page. Every `[data-fh-inline]` element gets its own form.
+Put a container anywhere on the page. Every `[data-earful-inline]` element gets its own form.
 
 ```html
-<div data-fh-inline data-fh-key="fhk_your_ingest_key" data-fh-project="My Game"></div>
+<div data-earful-inline data-earful-key="ear_your_ingest_key" data-earful-project="My Game"></div>
 <script src="https://feedback.example.com/widget.js" defer></script>
 ```
 
-The inline container accepts the same `data-fh-*` attributes as above (except label and position). If the container has no `data-fh-key`, the one on the script tag is used.
+The inline container accepts the same `data-earful-*` attributes as above (except label and position). If the container has no `data-earful-key`, the one on the script tag is used.
 
 ## Hosted page
 
@@ -50,28 +50,28 @@ Every project also has a hosted page at `https://feedback.example.com/s/<project
 
 ## JavaScript API
 
-The bundle exposes `window.FeedbackHarvest`:
+The bundle exposes `window.Earful`:
 
 ```js
 // Mount a form into any element (for example after a SPA route change).
-FeedbackHarvest.mount(document.querySelector('#feedback'), {
-  key: 'fhk_your_ingest_key',
+Earful.mount(document.querySelector('#feedback'), {
+  key: 'ear_your_ingest_key',
   endpoint: 'https://feedback.example.com',
   project: 'My Web App',
   meta: { version: '2.0.1', userTier: 'free' },
   onSuccess: () => console.log('sent'),
 });
 
-// Re-scan for new [data-fh-inline] elements.
-FeedbackHarvest.mountInline();
+// Re-scan for new [data-earful-inline] elements.
+Earful.mountInline();
 ```
 
 ## ESM client (bring your own UI)
 
 ```ts
-import { createClient, FeedbackHarvestError } from '@feedback-harvest/widget';
+import { createClient, EarfulError } from '@earful/widget';
 
-const client = createClient({ endpoint: 'https://feedback.example.com', key: 'fhk_your_ingest_key' });
+const client = createClient({ endpoint: 'https://feedback.example.com', key: 'ear_your_ingest_key' });
 
 // Optional: start the proof of work early, e.g. when your dialog opens.
 void client.prepare();
@@ -85,13 +85,13 @@ try {
     meta: { version: '1.4.2', platform: 'linux' },
   });
 } catch (err) {
-  if (err instanceof FeedbackHarvestError && err.code === 'rate_limited') {
+  if (err instanceof EarfulError && err.code === 'rate_limited') {
     console.log(`retry in ${err.retryAfter}s`);
   }
 }
 ```
 
-`submit` fetches and solves a challenge if none is prepared, discards prepared challenges that are about to expire, and retries once with a fresh challenge when the server answers `challenge_used` or `challenge_expired`. Errors are `FeedbackHarvestError` with `code` (the server's stable error code, or `network` / `invalid_response`), `status` and, for rate limits, `retryAfter` in seconds.
+`submit` fetches and solves a challenge if none is prepared, discards prepared challenges that are about to expire, and retries once with a fresh challenge when the server answers `challenge_used` or `challenge_expired`. Errors are `EarfulError` with `code` (the server's stable error code, or `network` / `invalid_response`), `status` and, for rate limits, `retryAfter` in seconds.
 
 Also exported: `solve`, `workBits`, `leadingZeroBits`, `mount`, `collectMeta`, `friendlyError`.
 
@@ -118,9 +118,9 @@ Each challenge works once and expires after `expires_in` seconds. On `challenge_
 ## Development
 
 ```sh
-pnpm --filter @feedback-harvest/widget build      # dist/client.js, dist/widget.js, dist/types
-pnpm --filter @feedback-harvest/widget test       # vitest (happy-dom)
-pnpm --filter @feedback-harvest/widget typecheck
+pnpm --filter @earful/widget build      # dist/client.js, dist/widget.js, dist/types
+pnpm --filter @earful/widget test       # vitest (happy-dom)
+pnpm --filter @earful/widget typecheck
 ```
 
 The PoW test vector in `src/pow.test.ts` is shared with `crates/server/src/pow.rs`. Change both together.

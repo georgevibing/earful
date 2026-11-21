@@ -225,7 +225,18 @@ END;
 INSERT INTO feedback_fts(feedback_fts) VALUES ('rebuild');
 INSERT INTO feedback_tri(feedback_tri) VALUES ('rebuild');
 "#,
+    r#"
+-- Global rate caps count a bucket across all IPs: give them their own index.
+CREATE INDEX rate_events_global ON rate_events (bucket, ts);
+-- Sessions remember which admin password they were created under. Existing
+-- sessions get an empty fingerprint, so everyone signs in once after upgrading.
+ALTER TABLE sessions ADD COLUMN pw_fp TEXT NOT NULL DEFAULT '';
+"#,
 ];
+
+/// Index of the migration that added diagnostics (used by its upgrade test).
+#[cfg(test)]
+const DIAGNOSTICS_MIGRATION: usize = 4;
 
 pub fn open(path: &Path) -> Result<Connection> {
     let conn =
@@ -335,10 +346,10 @@ mod diagnostic_migration_tests {
     fn upgrade_preserves_children_and_search() {
         let mut c = Connection::open_in_memory().unwrap();
         configure(&c).unwrap();
-        for sql in &MIGRATIONS[..MIGRATIONS.len() - 1] {
+        for sql in &MIGRATIONS[..DIAGNOSTICS_MIGRATION] {
             c.execute_batch(sql).unwrap();
         }
-        c.pragma_update(None, "user_version", (MIGRATIONS.len() - 1) as i64)
+        c.pragma_update(None, "user_version", DIAGNOSTICS_MIGRATION as i64)
             .unwrap();
         c.execute_batch("INSERT INTO projects VALUES(1,'game','Game','game','','key',1,1,1);
           INSERT INTO feedback(id,project_id,kind,title,body,content_hash,ip_hash,created_at,updated_at,last_seen_at) VALUES(1,1,'bug','Inventory','Saving failed','hash','ip',1,1,1);

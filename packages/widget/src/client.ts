@@ -4,6 +4,14 @@
  */
 import { solve } from './pow';
 
+/** Highest proof of work difficulty the widget will attempt (server default max is 23). */
+export const MAX_BITS = 28;
+const MAX_SOLVE_MS = 120_000;
+
+function isSaneBits(bits: unknown): bits is number {
+  return typeof bits === 'number' && Number.isInteger(bits) && bits >= 0 && bits <= MAX_BITS;
+}
+
 export type FeedbackKind = 'bug' | 'feedback' | 'crash' | 'exception' | 'log';
 
 export interface FeedbackInput {
@@ -40,7 +48,7 @@ export interface FeedbackClient {
 export class EarfulError extends Error {
   override readonly name = 'EarfulError';
   constructor(
-    /** Stable server error code, or `network` / `invalid_response` for client side failures. */
+    /** Stable server error code, or `network` / `invalid_response` / `challenge_timeout` for client side failures. */
     readonly code: string,
     message: string,
     /** HTTP status, 0 for network failures. */
@@ -108,11 +116,24 @@ export function createClient(options: ClientOptions): FeedbackClient {
     });
     if (!res.ok) throw await toError(res);
     const data = (await res.json()) as Partial<ChallengeResponse>;
-    if (typeof data.challenge !== 'string' || typeof data.bits !== 'number') {
+    if (typeof data.challenge !== 'string' || !isSaneBits(data.bits)) {
       throw new EarfulError('invalid_response', 'Malformed challenge response', res.status);
     }
     const issuedAt = now();
-    const nonce = await solve(data.challenge, data.bits);
+    // A hostile endpoint must not be able to keep the visitor's CPU busy forever.
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), MAX_SOLVE_MS);
+    let nonce: string;
+    try {
+      nonce = await solve(data.challenge, data.bits, { signal: timeout.signal });
+    } catch (err) {
+      if (timeout.signal.aborted) {
+        throw new EarfulError('challenge_timeout', 'Solving the challenge took too long', 0);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     const ttlMs = (typeof data.expires_in === 'number' ? data.expires_in : 0) * 1000;
     return { challenge: data.challenge, nonce, validUntil: issuedAt + ttlMs - EXPIRY_MARGIN_MS };
   }

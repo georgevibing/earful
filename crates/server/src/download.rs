@@ -26,6 +26,38 @@ fn min_size(file: &str) -> u64 {
     }
 }
 
+/// The default model, pinned to the same revision and hashes as the Dockerfile.
+pub const PINNED_REPO: &str = "minishlab/potion-base-8M";
+pub const PINNED_REVISION: &str = "bf8b056651a2c21b8d2565580b8569da283cab23";
+const PINNED_SHA256: &[(&str, &str)] = &[
+    (
+        "config.json",
+        "2a6ac0e9aaa356a68a5688070db78fc3a464fefe85d2f06a1905ce3718687553",
+    ),
+    (
+        "model.safetensors",
+        "f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2",
+    ),
+    (
+        "tokenizer.json",
+        "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50",
+    ),
+];
+
+/// Resolves the revision to fetch and the hashes to enforce. The default model
+/// at "main" (or its pinned commit) is fetched at the pinned commit and checked
+/// file by file; anything else is unpinned and only size checked.
+fn resolve(
+    repo: &str,
+    revision: &str,
+) -> (String, Option<&'static [(&'static str, &'static str)]>) {
+    if repo == PINNED_REPO && (revision == "main" || revision == PINNED_REVISION) {
+        (PINNED_REVISION.to_string(), Some(PINNED_SHA256))
+    } else {
+        (revision.to_string(), None)
+    }
+}
+
 pub fn file_url(repo: &str, revision: &str, file: &str) -> String {
     format!("https://huggingface.co/{repo}/resolve/{revision}/{file}")
 }
@@ -36,6 +68,11 @@ pub fn file_url(repo: &str, revision: &str, file: &str) -> String {
 pub async fn download_model(repo: &str, revision: &str, dir: &Path) -> Result<Vec<Downloaded>> {
     if repo.split('/').count() != 2 || repo.contains("..") {
         bail!("expected a Hugging Face repo id like minishlab/potion-base-8M, got {repo:?}");
+    }
+    let (revision, pinned) = resolve(repo, revision);
+    let revision = revision.as_str();
+    if pinned.is_none() {
+        tracing::warn!(%repo, %revision, "downloading an unpinned model: files are not integrity checked");
     }
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     let client = reqwest::Client::builder()
@@ -72,11 +109,21 @@ pub async fn download_model(repo: &str, revision: &str, dir: &Path) -> Result<Ve
             let _ = std::fs::remove_file(&tmp);
             bail!("{file} is only {bytes} bytes, the download looks broken");
         }
+        let sha256 = hex::encode(hasher.finalize());
+        if let Some(expected) = pinned.and_then(|p| p.iter().find(|(f, _)| f == file))
+            && expected.1 != sha256
+        {
+            let _ = std::fs::remove_file(&tmp);
+            bail!(
+                "{file} sha256 {sha256} does not match the pinned {}",
+                expected.1
+            );
+        }
         std::fs::rename(&tmp, dir.join(file))?;
         out.push(Downloaded {
             file,
             bytes,
-            sha256: hex::encode(hasher.finalize()),
+            sha256,
         });
     }
     Ok(out)
@@ -92,6 +139,16 @@ mod tests {
             file_url("minishlab/potion-base-8M", "main", "config.json"),
             "https://huggingface.co/minishlab/potion-base-8M/resolve/main/config.json"
         );
+    }
+
+    #[test]
+    fn default_model_is_pinned() {
+        let (rev, pins) = resolve(PINNED_REPO, "main");
+        assert_eq!(rev, PINNED_REVISION);
+        assert_eq!(pins.unwrap().len(), MODEL2VEC_FILES.len());
+        let (rev, pins) = resolve("minishlab/potion-retrieval-32M", "main");
+        assert_eq!(rev, "main");
+        assert!(pins.is_none());
     }
 
     #[tokio::test]

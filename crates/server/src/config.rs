@@ -31,6 +31,10 @@ pub struct Limits {
     pub per_ip_project_day: u32,
     pub per_ip_global_day: u32,
     pub per_project_hour: u32,
+    /// Submissions per day across every project and IP (disk-filling guard).
+    pub global_day: u32,
+    /// Days quarantined (spam) items are kept before being purged; 0 keeps them.
+    pub spam_retention_days: i64,
     pub challenges_per_ip_hour: u32,
     pub logins_per_ip_window: u32,
     pub login_window_secs: i64,
@@ -152,6 +156,8 @@ impl Default for Limits {
             per_ip_project_day: 30,
             per_ip_global_day: 60,
             per_project_hour: 300,
+            global_day: 5000,
+            spam_retention_days: 30,
             challenges_per_ip_hour: 60,
             logins_per_ip_window: 5,
             login_window_secs: 15 * 60,
@@ -241,6 +247,11 @@ impl Config {
                     "EARFUL_LIMIT_PROJECT_HOUR",
                     limits_default.per_project_hour,
                 )?,
+                global_day: parse_or("EARFUL_LIMIT_GLOBAL_DAY", limits_default.global_day)?,
+                spam_retention_days: parse_or(
+                    "EARFUL_SPAM_RETENTION_DAYS",
+                    limits_default.spam_retention_days,
+                )?,
                 challenges_per_ip_hour: parse_or(
                     "EARFUL_LIMIT_CHALLENGES_IP_HOUR",
                     limits_default.challenges_per_ip_hour,
@@ -251,8 +262,9 @@ impl Config {
                 spam_threshold: parse_or("EARFUL_SPAM_THRESHOLD", limits_default.spam_threshold)?,
             },
             pow: PowConfig {
-                base_bits: parse_or("EARFUL_POW_BITS", pow_default.base_bits)?,
-                max_bits: parse_or("EARFUL_POW_MAX_BITS", pow_default.max_bits)?,
+                base_bits: parse_or("EARFUL_POW_BITS", pow_default.base_bits)?.min(28),
+                // The widget refuses challenges above 28 bits (hostile-server guard).
+                max_bits: parse_or("EARFUL_POW_MAX_BITS", pow_default.max_bits)?.min(28),
                 challenge_ttl_secs: parse_or(
                     "EARFUL_CHALLENGE_TTL_SECS",
                     pow_default.challenge_ttl_secs,

@@ -51,6 +51,12 @@ describe('createClient', () => {
     expect(workBits(body.challenge, body.nonce)).toBeGreaterThanOrEqual(4);
   });
 
+  it.each([256, 4.5, -1, Number.NaN, '20'])('refuses a challenge with unreasonable bits (%s)', async (bits) => {
+    const server = mockServer([() => json(200, { ...challenge(), bits })]);
+    const client = createClient({ endpoint: 'https://x', key: 'k', fetch: server.fetch });
+    await expect(client.submit({ kind: 'bug', body: 'It crashes' })).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('drops rating for bug reports and omits empty contact', async () => {
     const server = mockServer([() => json(200, challenge()), () => json(202, { ok: true })]);
     const client = createClient({ endpoint: 'https://x', key: 'k', fetch: server.fetch });

@@ -43,6 +43,16 @@ impl Resp {
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers.get(name).and_then(|v| v.to_str().ok())
     }
+
+    /// `name=value` of every Set-Cookie header.
+    pub fn set_cookies(&self) -> Vec<String> {
+        self.headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .map(|v| v.split(';').next().unwrap_or_default().to_string())
+            .collect()
+    }
 }
 
 /// Request builder with sensible defaults (JSON, client IP 1.1.1.1, admin cookie when logged in).
@@ -188,8 +198,12 @@ impl App {
             .send()
             .await;
         assert_eq!(r.status, StatusCode::NO_CONTENT, "{}", r.text);
-        let set_cookie = r.header("set-cookie").expect("session cookie").to_string();
-        self.cookie = Some(set_cookie.split(';').next().unwrap().to_string());
+        let session = r
+            .set_cookies()
+            .into_iter()
+            .find(|c| c.starts_with("earful_session="))
+            .expect("session cookie");
+        self.cookie = Some(session);
     }
 
     pub async fn create_project(&self, title: &str) -> Value {

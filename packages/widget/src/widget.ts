@@ -30,6 +30,25 @@ function defaultEndpoint(): string {
   return data(script, 'Endpoint') || scriptOrigin();
 }
 
+/**
+ * Inline elements may come from user-generated content on the host page (many
+ * sanitizers keep data-* attributes), so an element can only pick an endpoint
+ * on the same origin as the script's own endpoint. Anything else is ignored,
+ * otherwise a forum post could mount a lookalike form that reports elsewhere.
+ */
+function elementEndpoint(el: HTMLElement): string {
+  const fallback = defaultEndpoint();
+  const wanted = el === script ? undefined : data(el, 'Endpoint');
+  if (!wanted) return fallback;
+  try {
+    if (new URL(wanted, location.href).origin === new URL(fallback, location.href).origin) return wanted;
+  } catch {
+    // Invalid URL: use the default.
+  }
+  console.warn('[earful] ignoring data-earful-endpoint on a different origin than widget.js', el);
+  return fallback;
+}
+
 function parseMeta(raw: string | undefined): Record<string, unknown> | undefined {
   if (!raw) return undefined;
   try {
@@ -50,7 +69,7 @@ function optionsFrom(el: HTMLElement, fallbackKey?: string): MountOptions | null
     console.warn('[earful] missing data-earful-key on', el);
     return null;
   }
-  const opts: MountOptions = { key, endpoint: data(el, 'Endpoint') || defaultEndpoint() };
+  const opts: MountOptions = { key, endpoint: elementEndpoint(el) };
   const project = data(el, 'Project');
   if (project) opts.project = project;
   const kind = parseKind(data(el, 'Kind'));

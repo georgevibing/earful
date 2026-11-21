@@ -6,11 +6,28 @@ use axum::http::HeaderMap;
 
 use crate::crypto;
 
-/// Strips control characters (keeping newlines and tabs) and trims.
+/// Bidirectional embedding/override/isolate controls. They have no place in a
+/// bug report and can make text in the admin UI read differently than stored.
+fn is_bidi_control(c: char) -> bool {
+    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Invisible format characters (zero-width space/joiner, soft hyphen, BOM, bidi
+/// marks) that can hide spam phrases from the heuristics. Removed for scoring
+/// only, because the zero-width joiner is part of legitimate emoji.
+fn is_invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}' | '\u{034F}' | '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+            | '\u{2060}'..='\u{2064}' | '\u{FEFF}'
+    ) || is_bidi_control(c)
+}
+
+/// Strips control characters (keeping newlines and tabs) and bidi controls, then trims.
 pub fn sanitize(input: &str) -> String {
     input
         .chars()
-        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .filter(|c| (!c.is_control() || *c == '\n' || *c == '\t') && !is_bidi_control(*c))
         .collect::<String>()
         .trim()
         .to_string()
@@ -57,7 +74,10 @@ const SHORTENERS: &[&str] = &[
 
 /// Returns a score (0 is clean, >= threshold is quarantined) and the triggered signals.
 pub fn score(title: &str, body: &str) -> (f32, Vec<&'static str>) {
-    let text = format!("{title}\n{body}");
+    let text: String = format!("{title}\n{body}")
+        .chars()
+        .filter(|c| !is_invisible(*c))
+        .collect();
     let lower = text.to_lowercase();
     let mut score = 0.0f32;
     let mut reasons = Vec::new();
@@ -227,6 +247,12 @@ mod tests {
     #[test]
     fn sanitize_strips_control_chars() {
         assert_eq!(sanitize("  hi\u{0}\u{7}\nthere\t "), "hi\nthere");
+        assert_eq!(sanitize("a\u{202E}b\u{2066}c"), "abc");
+        // Zero-width joiner stays: it is part of emoji sequences.
+        assert_eq!(
+            sanitize("\u{1F468}\u{200D}\u{1F4BB}"),
+            "\u{1F468}\u{200D}\u{1F4BB}"
+        );
     }
 
     #[test]

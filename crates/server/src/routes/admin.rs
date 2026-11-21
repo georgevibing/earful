@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::{ClientIp, IdPath, JsonBody, labels};
 use crate::{
-    auth::{self, Admin, SESSION_COOKIE},
+    auth::{self, Admin},
     crypto,
     db::now,
     error::{AppError, AppResult},
@@ -37,6 +37,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login))
         .route("/logout", post(logout))
+        .route("/logout-all", post(logout_all))
         .route("/me", get(me))
         .route("/projects", get(list_projects).post(create_project))
         .route("/labels", get(labels::list).post(labels::create))
@@ -97,6 +98,9 @@ async fn login(
         ));
     }
     let cfg = state.cfg.clone();
+    // Browsers that signed in before skip the global cap (only the per-IP limit
+    // applies), so a distributed wrong-password spray cannot lock the admin out.
+    let known_device = auth::known_device(&state, &jar);
     // Only failed attempts are counted, so a correct password never locks you out.
     // The attempt is recorded together with the check (atomically, under the DB
     // lock) and removed again on success; recording after the slow argon2 check
@@ -118,8 +122,13 @@ async fn login(
                     limit: 30,
                 },
             ];
+            let rules = if known_device {
+                &rules[..1]
+            } else {
+                &rules[..]
+            };
             let ts = now();
-            if let Err(retry_after) = ratelimit::check(c, ts, &rules)? {
+            if let Err(retry_after) = ratelimit::check(c, ts, rules)? {
                 return Ok(Err(retry_after));
             }
             ratelimit::record(c, "login", &ip, ts)?;
@@ -144,10 +153,13 @@ async fn login(
         })
         .await?;
     let token = auth::create_session(&state).await?;
-    Ok((
-        jar.add(auth::session_cookie(&state, token)),
-        StatusCode::NO_CONTENT,
-    ))
+    let jar = jar.add(auth::session_cookie(&state, token));
+    let jar = if known_device {
+        jar
+    } else {
+        jar.add(auth::device_cookie(&state))
+    };
+    Ok((jar, StatusCode::NO_CONTENT))
 }
 
 async fn logout(
@@ -161,9 +173,19 @@ async fn logout(
             "cross origin request rejected".into(),
         ));
     }
-    if let Some(token) = jar.get(SESSION_COOKIE).map(|c| c.value().to_string()) {
+    if let Some(token) = auth::session_token(&jar) {
         auth::destroy_session(&state, &token).await?;
     }
+    Ok((jar.add(auth::clear_cookie(&state)), StatusCode::NO_CONTENT))
+}
+
+/// Signs out every device, including this one.
+async fn logout_all(
+    _: Admin,
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> AppResult<(CookieJar, StatusCode)> {
+    auth::destroy_all_sessions(&state).await?;
     Ok((jar.add(auth::clear_cookie(&state)), StatusCode::NO_CONTENT))
 }
 
@@ -529,6 +551,18 @@ pub(crate) async fn op_export_items(
     state: &AppState,
     id: i64,
 ) -> AppResult<(String, Vec<Feedback>)> {
+    let (slug, items, _) = op_export_page(state, id, None).await?;
+    Ok((slug, items))
+}
+
+/// One page (`Some((limit, offset))`) or all (`None`) of a project's feedback,
+/// oldest first, plus the project's total item count. Paging happens in SQL so
+/// a large project is never loaded into memory for a small page.
+pub(crate) async fn op_export_page(
+    state: &AppState,
+    id: i64,
+    page: Option<(i64, i64)>,
+) -> AppResult<(String, Vec<Feedback>, i64)> {
     state
         .db
         .call(move |c| {
@@ -542,15 +576,22 @@ pub(crate) async fn op_export_items(
             else {
                 return Ok(None);
             };
+            let total: i64 = c.query_row(
+                "SELECT COUNT(*) FROM feedback WHERE project_id = ?1",
+                params![id],
+                |r| r.get(0),
+            )?;
+            let (limit, offset) = page.unwrap_or((-1, 0));
             let mut stmt = c.prepare(&format!(
-                "SELECT {} FROM feedback WHERE project_id = ?1 ORDER BY created_at, id",
+                "SELECT {} FROM feedback WHERE project_id = ?1 ORDER BY created_at, id
+                 LIMIT ?2 OFFSET ?3",
                 Feedback::COLUMNS
             ))?;
             let mut items = stmt
-                .query_map(params![id], Feedback::from_row)?
+                .query_map(params![id, limit, offset], Feedback::from_row)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             labels::attach(c, &mut items)?;
-            Ok(Some((slug, items)))
+            Ok(Some((slug, items, total)))
         })
         .await?
         .ok_or(AppError::NotFound)
@@ -611,17 +652,16 @@ pub(crate) fn to_csv(items: &[Feedback]) -> String {
 
 /// RFC 4180 quoting, plus a leading apostrophe on formula-like cells so
 /// public input cannot run spreadsheet formulas when the export is opened.
+/// Quotes every value. Unquoted fields are unsafe in spreadsheets that split on
+/// `;` (Excel in German and most EU locales): `x;=1+1` would put a formula in its
+/// own cell. Values that start like a formula also get a leading apostrophe.
 pub fn csv_field(v: &str) -> String {
     let v = if v.starts_with(['=', '+', '-', '@', '\t', '\r']) {
         format!("'{v}")
     } else {
         v.to_string()
     };
-    if v.contains([',', '"', '\n', '\r']) {
-        format!("\"{}\"", v.replace('"', "\"\""))
-    } else {
-        v
-    }
+    format!("\"{}\"", v.replace('"', "\"\""))
 }
 
 fn iso(ts: i64) -> String {
@@ -946,7 +986,7 @@ pub(crate) async fn op_list_feedback(
     let offset = parse_int(q, "offset")?.unwrap_or(0).max(0);
     let text = q
         .get("q")
-        .map(|s| s.trim().to_string())
+        .map(|s| crate::search::clamp_query(s.trim()))
         .filter(|s| !s.is_empty());
 
     let Some(text) = text else {
@@ -1405,11 +1445,13 @@ mod tests {
 
     #[test]
     fn csv_quoting_and_formula_guard() {
-        assert_eq!(csv_field("plain"), "plain");
+        assert_eq!(csv_field("plain"), "\"plain\"");
         assert_eq!(csv_field("a,b"), "\"a,b\"");
+        // Semicolon-splitting spreadsheets keep a quoted field in one cell.
+        assert_eq!(csv_field("x;=1+1"), "\"x;=1+1\"");
         assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
         assert_eq!(csv_field("line\nbreak"), "\"line\nbreak\"");
-        assert_eq!(csv_field("=HYPERLINK(1)"), "'=HYPERLINK(1)");
+        assert_eq!(csv_field("=HYPERLINK(1)"), "\"'=HYPERLINK(1)\"");
         assert_eq!(csv_field("-1,2"), "\"'-1,2\"");
     }
 }

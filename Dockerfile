@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---------- 1. Web assets (admin UI + widget) ----------
-FROM node:24-slim AS web
+FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS web
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
@@ -21,7 +21,7 @@ COPY packages/widget packages/widget
 RUN pnpm build:web
 
 # ---------- 2. Rust binary ----------
-FROM rust:1-slim-bookworm AS server
+FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS server
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake perl pkg-config \
     && rm -rf /var/lib/apt/lists/*
@@ -50,7 +50,7 @@ RUN mkdir -p /out/data && chown 65532:65532 /out/data
 # ---------- 3. Embedding model (Model2Vec potion-base-8M, MIT, ~31 MB) ----------
 # Pinned revision and sha256 so builds are reproducible and tamper evident.
 # Independent of the source tree, so this layer stays cached across code edits.
-FROM debian:bookworm-slim AS model
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS model
 ARG MODEL_REPO=minishlab/potion-base-8M
 ARG MODEL_REVISION=bf8b056651a2c21b8d2565580b8569da283cab23
 RUN apt-get update \
@@ -68,7 +68,7 @@ RUN for f in config.json model.safetensors tokenizer.json; do \
     && chmod 0444 ./*
 
 # ---------- 4. Runtime ----------
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 COPY --from=server /earful /earful
 COPY --from=server --chown=65532:65532 /out/data /data
 # Read only for everyone; the server never writes to the model dir.

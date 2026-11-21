@@ -19,7 +19,7 @@ use crate::{
     tokens::Scope,
 };
 
-const MAX_EXPORT: i64 = 1000;
+const MAX_EXPORT: i64 = 200;
 const SNIPPET: usize = 180;
 
 struct ToolDef {
@@ -277,7 +277,7 @@ fn defs() -> Vec<ToolDef> {
         ToolDef {
             name: "export_feedback",
             title: "Export feedback",
-            description: "Export all feedback of a project (every status, oldest first) as JSON objects or CSV text, paginated (limit up to 1000). Use for analysis or backups; prefer list/search for browsing.",
+            description: "Export all feedback of a project (every status, oldest first) as JSON objects or CSV text, paginated (limit up to 200). Use for analysis or backups; prefer list/search for browsing.",
             input: schema(
                 json!({
                     "project": project_prop(),
@@ -994,12 +994,12 @@ async fn run(ctx: &Ctx, name: &str, a: &Args<'_>) -> ToolResult {
             if format != "json" && format != "csv" {
                 return Err("invalid_arguments: format must be json or csv".into());
             }
-            let limit = a.int("limit")?.unwrap_or(200).clamp(1, MAX_EXPORT) as usize;
-            let offset = a.int("offset")?.unwrap_or(0).max(0) as usize;
-            let (slug, items) = admin::op_export_items(state, id).await.map_err(app_err)?;
-            let total = items.len();
-            let page: Vec<_> = items.into_iter().skip(offset).take(limit).collect();
-            let next = offset + page.len();
+            let limit = a.int("limit")?.unwrap_or(200).clamp(1, MAX_EXPORT);
+            let offset = a.int("offset")?.unwrap_or(0).max(0);
+            let (slug, page, total) = admin::op_export_page(state, id, Some((limit, offset)))
+                .await
+                .map_err(app_err)?;
+            let next = offset + page.len() as i64;
             let next_offset = if next < total {
                 json!(next)
             } else {
@@ -1221,7 +1221,10 @@ async fn find_similar(ctx: &Ctx, a: &Args<'_>) -> ToolResult {
     let state = &ctx.state;
     let limit = a.int("limit")?.unwrap_or(10).clamp(1, 50) as usize;
     let id = a.int("id")?;
-    let text = a.str("text")?.filter(|t| !t.trim().is_empty());
+    let text = a
+        .str("text")?
+        .filter(|t| !t.trim().is_empty())
+        .map(|t| crate::search::clamp_query(&t));
     let mut project = opt_project(ctx, a).await?;
 
     let query_text = match (id, &text) {

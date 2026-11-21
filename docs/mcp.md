@@ -151,7 +151,7 @@ Projects can be referenced by id or slug everywhere. Dates accept ISO 8601
 | `get_feedback` | read | One item in full plus up to 5 similar items (duplicate spotting). |
 | `find_similar_feedback` | read | Items similar to an id or to free text. Falls back to lexical search when embeddings are off. |
 | `get_stats` | read | Totals, 30 day bug vs feedback series, anti-spam block counts, embedding status. |
-| `export_feedback` | read | All items of a project, oldest first, as JSON or CSV, paginated (max 1000 per call). |
+| `export_feedback` | read | All items of a project, oldest first, as JSON or CSV, paginated (max 200 per call). |
 | `get_integration_snippets` | read | Hosted page URL, widget tags, ESM client and curl examples for a project. |
 | `list_labels` | read | Label definitions and non-spam/open report counts, optionally scoped by project. |
 | `create_label` | write | Project label with name, color and optional classification guidance in description. |

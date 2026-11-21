@@ -50,7 +50,7 @@ fn load_index(conn: &rusqlite::Connection, embedder: &Embedder, index: &VectorIn
     }
     let mut stmt = conn.prepare(
         "SELECT e.feedback_id, f.project_id, e.vec FROM embeddings e
-         JOIN feedback f ON f.id = e.feedback_id WHERE e.model = ?1",
+         JOIN feedback f ON f.id = e.feedback_id WHERE e.model = ?1 AND length(e.vec) > 0",
     )?;
     let rows = stmt.query_map(params![embedder.model_id()], |r| {
         Ok((

@@ -83,11 +83,16 @@ pub async fn embed_pending(state: &AppState) -> Result<usize> {
     }
 
     let texts: Vec<String> = pending.iter().map(|p| p.2.clone()).collect();
-    let vectors = state.embedder.embed(&texts).await?;
+    let vectors = match state.embedder.embed(&texts).await {
+        Ok(v) => v.into_iter().map(Some).collect::<Vec<_>>(),
+        Err(batch_err) => embed_one_by_one(state, &texts, batch_err).await?,
+    };
+    // Items the provider rejects on their own are stored with an empty vector,
+    // so a single poison input cannot stall the queue behind it forever.
     let rows: Vec<(i64, i64, Vec<f32>)> = pending
         .into_iter()
         .zip(vectors)
-        .map(|((id, project_id, _), v)| (id, project_id, v))
+        .map(|((id, project_id, _), v)| (id, project_id, v.unwrap_or_default()))
         .collect();
 
     let to_store = rows.clone();
@@ -109,10 +114,33 @@ pub async fn embed_pending(state: &AppState) -> Result<usize> {
 
     let count = rows.len();
     for (id, project_id, v) in rows {
+        if v.is_empty() {
+            continue;
+        }
         state.index.insert(id, project_id, v);
         flag_near_duplicate(state, id).await?;
     }
     Ok(count)
+}
+
+/// Retries a failed batch item by item. If every item fails the provider is
+/// probably down, so the original error is returned and the batch retried later.
+async fn embed_one_by_one(
+    state: &AppState,
+    texts: &[String],
+    batch_err: anyhow::Error,
+) -> Result<Vec<Option<Vec<f32>>>> {
+    let mut out = Vec::with_capacity(texts.len());
+    for text in texts {
+        let one = state.embedder.embed(std::slice::from_ref(text)).await;
+        out.push(one.ok().and_then(|mut v| v.pop()));
+    }
+    if out.iter().all(Option::is_none) {
+        return Err(batch_err);
+    }
+    let skipped = out.iter().filter(|v| v.is_none()).count();
+    tracing::warn!(skipped, error = %batch_err, "embedding provider rejected some items; skipped them");
+    Ok(out)
 }
 
 /// Quarantines a fresh submission that is nearly identical to another one sent
@@ -127,8 +155,12 @@ async fn flag_near_duplicate(state: &AppState, id: i64) -> Result<()> {
             let mut stmt = c.prepare(
                 "SELECT o.id FROM feedback f JOIN feedback o
                    ON o.ip_hash = f.ip_hash AND o.project_id = f.project_id AND o.id != f.id
-                 WHERE f.id = ?1 AND f.status = 'new' AND f.dup_checked = 0
-                   AND f.kind IN ('bug', 'feedback') AND o.kind = f.kind
+                 WHERE f.id = ?1 AND f.status = 'new' AND f.dup_checked = 0 AND f.ip_hash != ''
+                   AND o.kind = f.kind
+                   -- Crash/exception/log reports with different diagnostics are
+                   -- distinct even when the description is the same; paraphrased
+                   -- spam sent as kind 'log' usually has none, so it still matches.
+                   AND (f.kind IN ('bug', 'feedback') OR o.diagnostics = f.diagnostics)
                    AND o.created_at > f.created_at - 86400",
             )?;
             let rows = stmt.query_map(params![id], |r| r.get(0))?;
@@ -171,13 +203,40 @@ async fn flag_near_duplicate(state: &AppState, id: i64) -> Result<()> {
 
 pub async fn prune(state: &AppState) -> Result<()> {
     let ts = now();
-    state
+    let spam_days = state.cfg.limits.spam_retention_days;
+    let purged = state
         .db
         .call(move |c| {
+            // The longest rate window is one day.
             c.execute(
                 "DELETE FROM rate_events WHERE ts < ?1",
+                params![ts - 86400 - 60],
+            )?;
+            // IP pseudonyms are only needed for same-sender duplicate checks
+            // (24 h). Drop them afterwards so a database copy cannot be used to
+            // recover submitters' addresses by brute-forcing the HMAC.
+            c.execute(
+                "UPDATE feedback SET ip_hash = '' WHERE ip_hash != '' AND created_at < ?1",
                 params![ts - 2 * 86400],
             )?;
+            let mut purged = Vec::new();
+            if spam_days > 0 {
+                let cutoff = ts - spam_days * 86400;
+                // Flood quarantines can hold real reports that arrived during an
+                // attack, so they are never purged automatically.
+                let mut stmt = c.prepare(
+                    "SELECT id FROM feedback WHERE status = 'spam' AND updated_at < ?1
+                     AND COALESCE(spam_reason, '') NOT LIKE '%flood%'",
+                )?;
+                purged = stmt
+                    .query_map(params![cutoff], |r| r.get::<_, i64>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                c.execute(
+                    "DELETE FROM feedback WHERE status = 'spam' AND updated_at < ?1
+                     AND COALESCE(spam_reason, '') NOT LIKE '%flood%'",
+                    params![cutoff],
+                )?;
+            }
             c.execute(
                 "DELETE FROM used_challenges WHERE expires_at < ?1",
                 params![ts],
@@ -187,7 +246,14 @@ pub async fn prune(state: &AppState) -> Result<()> {
                 "DELETE FROM block_counts WHERE day < ?1",
                 params![ts / 86400 - 90],
             )?;
-            Ok(())
+            Ok(purged)
         })
-        .await
+        .await?;
+    for id in &purged {
+        state.index.remove(*id);
+    }
+    if !purged.is_empty() {
+        tracing::info!(count = purged.len(), "purged old quarantined feedback");
+    }
+    Ok(())
 }

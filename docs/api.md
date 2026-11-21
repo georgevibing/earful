@@ -88,6 +88,7 @@ Every non-GET admin request with an `Origin` header must match `Host`, else
 
 - `POST /api/admin/login` `{ "password": "..." }` gives `204` + cookie, `401 invalid_credentials`, `429 rate_limited` (5 failed attempts per 15 min per IP, 30 failed per hour globally; successful logins are not counted). Attempts are reserved before the password check, so concurrent guesses cannot exceed the limit.
 - `POST /api/admin/logout` gives `204`, clears cookie.
+- `POST /api/admin/logout-all` gives `204`, signs out every session on every device.
 - `GET /api/admin/me` gives `200 {"ok": true}` or `401`.
 
 ### Projects

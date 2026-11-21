@@ -260,7 +260,9 @@ Step-by-step Coolify instructions, Cloudflare notes, an optional Ollama sidecar,
 | `EARFUL_LIMIT_IP_PROJECT_HOUR` | `10` | Per IP per project per hour. |
 | `EARFUL_LIMIT_IP_PROJECT_DAY` | `30` | Per IP per project per day. |
 | `EARFUL_LIMIT_IP_GLOBAL_DAY` | `60` | Per IP across all projects per day. |
-| `EARFUL_LIMIT_PROJECT_HOUR` | `300` | Per project across all IPs per hour (flood guard). |
+| `EARFUL_LIMIT_PROJECT_HOUR` | `300` | Per project across all IPs per hour (flood guard). Beyond it submissions are quarantined; at 3x they are refused. |
+| `EARFUL_LIMIT_GLOBAL_DAY` | `5000` | Submissions per day across every project and IP (protects the disk). |
+| `EARFUL_SPAM_RETENTION_DAYS` | `30` | Quarantined items older than this are purged. `0` keeps them forever. |
 | `EARFUL_LIMIT_CHALLENGES_IP_HOUR` | `60` | Challenges issued per IP per hour. |
 | `EARFUL_MIN_FILL_SECS` | `2` | Submissions faster than this after the challenge are quarantined. |
 | `EARFUL_SPAM_THRESHOLD` | `0.7` | Heuristic score that sends a submission to the spam bucket. |

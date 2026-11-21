@@ -27,6 +27,8 @@ use crate::{
 
 pub const SUPPORTED_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
 pub const FALLBACK_VERSION: &str = "2025-06-18";
+/// Most JSON-RPC messages accepted in one batch.
+pub const MAX_BATCH: usize = 20;
 
 const INSTRUCTIONS: &str = "\
 earful stores feedback and bug reports for the owner's projects (games, web apps, services).
@@ -170,6 +172,15 @@ pub async fn handle(
                     StatusCode::BAD_REQUEST,
                     Value::Null,
                     RpcError::new(-32600, "empty batch"),
+                );
+            }
+            // One request must not be able to queue thousands of expensive
+            // calls (exports, hybrid searches) on the shared connection.
+            if items.len() > MAX_BATCH {
+                return http_error(
+                    StatusCode::BAD_REQUEST,
+                    Value::Null,
+                    RpcError::new(-32600, format!("batch too large (max {MAX_BATCH})")),
                 );
             }
             let mut out = Vec::new();

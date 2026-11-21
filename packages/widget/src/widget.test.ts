@@ -50,6 +50,25 @@ describe('widget auto init', () => {
     expect(el.shadowRoot!.querySelector('h2')!.textContent).toBe('Feedback for Legacy');
   });
 
+  it('ignores an inline element endpoint on a foreign origin', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const el = document.createElement('div');
+    el.setAttribute('data-earful-inline', '');
+    el.setAttribute('data-earful-key', 'ear_inline');
+    el.setAttribute('data-earful-endpoint', 'https://evil.example');
+    document.body.append(el);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadWithScript({});
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    el.shadowRoot!.querySelector('form')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(
+      'https://feedback.example.com/api/v1/challenge?key=ear_inline',
+    );
+  });
+
   it('defaults the endpoint to the script origin', async () => {
     const el = document.createElement('div');
     el.setAttribute('data-earful-inline', '');

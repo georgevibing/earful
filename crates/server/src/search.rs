@@ -35,11 +35,21 @@ impl Scope<'_> {
     }
 }
 
+const MAX_TERM_CHARS: usize = 64;
+/// Longest search query considered; anything beyond is ignored.
+pub const MAX_QUERY_CHARS: usize = 500;
+
+/// Truncates a search query to [`MAX_QUERY_CHARS`] characters.
+pub fn clamp_query(q: &str) -> String {
+    q.chars().take(MAX_QUERY_CHARS).collect()
+}
+
 fn words(q: &str) -> Vec<String> {
     q.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
-        .map(str::to_string)
+        // Long "words" explode into thousands of trigrams in fuzzy search.
+        .map(|w| w.chars().take(MAX_TERM_CHARS).collect::<String>())
         .take(16)
         .collect()
 }

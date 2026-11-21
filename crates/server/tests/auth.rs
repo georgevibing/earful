@@ -60,8 +60,13 @@ async fn login_sets_a_hardened_cookie_and_logout_revokes_it() {
         .send()
         .await;
     assert_eq!(r.status, StatusCode::NO_CONTENT);
-    let cookie = r.header("set-cookie").unwrap().to_string();
-    assert!(cookie.starts_with("earful_session="), "{cookie}");
+    let cookie = r
+        .headers
+        .get_all("set-cookie")
+        .iter()
+        .map(|v| v.to_str().unwrap().to_string())
+        .find(|c| c.starts_with("earful_session="))
+        .expect("session cookie");
     assert!(cookie.contains("HttpOnly"), "{cookie}");
     assert!(cookie.contains("SameSite=Strict"), "{cookie}");
     assert!(cookie.contains("Path=/"), "{cookie}");
@@ -85,7 +90,97 @@ async fn secure_flag_follows_config() {
         .json(json!({ "password": PASSWORD }))
         .send()
         .await;
-    assert!(r.header("set-cookie").unwrap().contains("Secure"));
+    let cookies: Vec<_> = r.headers.get_all("set-cookie").iter().collect();
+    assert_eq!(cookies.len(), 2, "session + device cookie");
+    for c in cookies {
+        let c = c.to_str().unwrap();
+        assert!(c.starts_with("__Host-earful_"), "{c}");
+        assert!(c.contains("Secure"), "{c}");
+        assert!(!c.contains("Domain"), "{c}");
+    }
+}
+
+#[tokio::test]
+async fn known_devices_skip_the_global_login_cap() {
+    let app = App::new().await;
+    // Sign in once to receive a device cookie.
+    let r = app
+        .post("/api/admin/login")
+        .ip("8.8.8.8")
+        .json(json!({ "password": PASSWORD }))
+        .send()
+        .await;
+    let device = r
+        .set_cookies()
+        .into_iter()
+        .find(|c| c.starts_with("earful_device="))
+        .expect("device cookie");
+    // A wrong-password spray from many IPs fills the global hourly cap (30).
+    for i in 0..30 {
+        let r = app
+            .post("/api/admin/login")
+            .ip(&format!("20.0.{}.1", i / 5))
+            .json(json!({ "password": "wrong" }))
+            .send()
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    }
+    let stranger = app
+        .post("/api/admin/login")
+        .ip("30.0.0.1")
+        .json(json!({ "password": PASSWORD }))
+        .send()
+        .await;
+    assert_eq!(stranger.status, StatusCode::TOO_MANY_REQUESTS);
+    let owner = app
+        .post("/api/admin/login")
+        .ip("30.0.0.2")
+        .header("cookie", &device)
+        .json(json!({ "password": PASSWORD }))
+        .send()
+        .await;
+    assert_eq!(owner.status, StatusCode::NO_CONTENT, "{}", owner.text);
+    // A forged device cookie does not help.
+    let forged = app
+        .post("/api/admin/login")
+        .ip("30.0.0.3")
+        .header(
+            "cookie",
+            &format!("earful_device={}.{}", "a".repeat(32), "b".repeat(32)),
+        )
+        .json(json!({ "password": PASSWORD }))
+        .send()
+        .await;
+    assert_eq!(forged.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn logout_all_revokes_every_session() {
+    let mut first = App::admin().await;
+    first.login().await;
+    let other = first.cookie.clone();
+    first.login().await;
+    let r = first.post("/api/admin/logout-all").send().await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        first.get("/api/admin/me").send().await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    first.cookie = other;
+    assert_eq!(
+        first.get("/api/admin/me").send().await.status,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn responses_carry_hsts() {
+    let app = App::new().await;
+    let r = app.get("/healthz").send().await;
+    assert_eq!(
+        r.header("strict-transport-security"),
+        Some("max-age=31536000")
+    );
 }
 
 #[tokio::test]

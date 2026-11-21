@@ -80,6 +80,12 @@ async fn security_headers(req: Request, next: Next) -> Response {
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
     );
+    // Browsers ignore HSTS on plain http, so this is safe for local development
+    // and closes the first-visit SSL-stripping window in production.
+    h.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        HeaderValue::from_static("max-age=31536000"),
+    );
     if hosted {
         h.insert(
             header::CONTENT_SECURITY_POLICY,

@@ -292,12 +292,17 @@ pub async fn submit(
                 Rule { bucket: &bucket, ip_hash: Some(&ip), window_secs: 3600, limit: l.per_ip_project_hour },
                 Rule { bucket: &bucket, ip_hash: Some(&ip), window_secs: 86400, limit: l.per_ip_project_day },
                 Rule { bucket: "submit", ip_hash: Some(&ip), window_secs: 86400, limit: l.per_ip_global_day },
-                Rule { bucket: &bucket, ip_hash: None, window_secs: 3600, limit: l.per_project_hour },
+                // Hard ceilings: well above the project flood guard below, so a
+                // flood from many IPs quarantines reports instead of turning
+                // every real player away, and a total cap keeps the disk safe.
+                Rule { bucket: &bucket, ip_hash: None, window_secs: 3600, limit: l.per_project_hour.saturating_mul(3) },
+                Rule { bucket: "submit", ip_hash: None, window_secs: 86400, limit: l.global_day },
             ];
             if let Err(retry_after) = ratelimit::check(c, ts, &rules)? {
                 ratelimit::record_block(c, Some(pid), "rate_limited", ts)?;
                 return Ok(Err(AppError::RateLimited { retry_after }));
             }
+            let flooded = ratelimit::count(c, &bucket, None, ts - 3600)? >= l.per_project_hour;
 
             let token = body.challenge.as_deref().unwrap_or_default();
             let nonce = nonce_string(body.nonce.as_ref());
@@ -353,6 +358,10 @@ pub async fn submit(
             if over {
                 reasons.push(format!("spam_score ({})", signals.join(", ")));
                 ratelimit::record_block(c, Some(pid), "spam_score", ts)?;
+            }
+            if flooded {
+                reasons.push("flood".to_string());
+                ratelimit::record_block(c, Some(pid), "flood", ts)?;
             }
             let status = if reasons.is_empty() { "new" } else { "spam" };
             let spam_reason = (!reasons.is_empty()).then(|| reasons.join(", "));

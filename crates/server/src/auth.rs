@@ -20,7 +20,86 @@ use crate::{
     state::AppState,
 };
 
+/// Session cookie name over plain http (local development).
 pub const SESSION_COOKIE: &str = "earful_session";
+/// Session cookie name when cookies are `Secure`. The `__Host-` prefix makes
+/// browsers refuse it unless it is host-only, so sibling subdomains cannot set
+/// or overwrite it (cookie tossing).
+pub const SESSION_COOKIE_HOST: &str = "__Host-earful_session";
+/// Long-lived marker for browsers that have signed in before. It lets them
+/// bypass the global login cap, so strangers cannot lock the admin out by
+/// spraying wrong passwords from many IPs (OWASP "device cookie" pattern).
+const DEVICE_COOKIE: &str = "earful_device";
+const DEVICE_COOKIE_HOST: &str = "__Host-earful_device";
+const DEVICE_TTL_SECS: i64 = 365 * 86400;
+
+pub fn session_cookie_name(state: &AppState) -> &'static str {
+    if state.cfg.cookie_secure {
+        SESSION_COOKIE_HOST
+    } else {
+        SESSION_COOKIE
+    }
+}
+
+fn device_cookie_name(state: &AppState) -> &'static str {
+    if state.cfg.cookie_secure {
+        DEVICE_COOKIE_HOST
+    } else {
+        DEVICE_COOKIE
+    }
+}
+
+/// Raw session token from either cookie name.
+pub fn session_token(jar: &CookieJar) -> Option<String> {
+    jar.get(SESSION_COOKIE_HOST)
+        .or_else(|| jar.get(SESSION_COOKIE))
+        .map(|c| c.value().to_string())
+}
+
+/// Fingerprint of the configured admin password hash. Sessions remember it, so
+/// changing the password signs out every existing session.
+pub fn password_fingerprint(state: &AppState) -> String {
+    let hash = state.cfg.admin_password_hash.as_deref().unwrap_or("");
+    crypto::hmac_hex(&state.secret, format!("pw:{hash}").as_bytes())[..32].to_string()
+}
+
+/// Bound to the password fingerprint, so changing the password also revokes
+/// every device's exemption from the global login cap.
+fn device_data(state: &AppState, id: &str) -> String {
+    format!("device:{id}:{}", password_fingerprint(state))
+}
+
+fn device_mac(state: &AppState, id: &str) -> String {
+    crypto::hmac_hex(&state.secret, device_data(state, id).as_bytes())[..32].to_string()
+}
+
+pub fn device_cookie(state: &AppState) -> Cookie<'static> {
+    let id = crypto::random_hex(16);
+    let value = format!("{id}.{}", device_mac(state, &id));
+    Cookie::build((device_cookie_name(state), value))
+        .path("/")
+        .http_only(true)
+        .secure(state.cfg.cookie_secure)
+        .same_site(SameSite::Strict)
+        .max_age(time_duration(DEVICE_TTL_SECS))
+        .build()
+}
+
+/// True when the request carries a device cookie this server issued.
+pub fn known_device(state: &AppState, jar: &CookieJar) -> bool {
+    let Some(value) = jar
+        .get(DEVICE_COOKIE_HOST)
+        .or_else(|| jar.get(DEVICE_COOKIE))
+        .map(|c| c.value().to_string())
+    else {
+        return false;
+    };
+    let Some((id, mac)) = value.split_once('.') else {
+        return false;
+    };
+    id.len() == 32
+        && crypto::hmac_verify_hex(&state.secret, device_data(state, id).as_bytes(), mac, 16)
+}
 
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
     Argon2::default()
@@ -49,7 +128,7 @@ pub fn verify_password(configured: Option<&str>, password: &str) -> bool {
 }
 
 pub fn session_cookie(state: &AppState, token: String) -> Cookie<'static> {
-    Cookie::build((SESSION_COOKIE, token))
+    Cookie::build((session_cookie_name(state), token))
         .path("/")
         .http_only(true)
         .secure(state.cfg.cookie_secure)
@@ -59,7 +138,7 @@ pub fn session_cookie(state: &AppState, token: String) -> Cookie<'static> {
 }
 
 pub fn clear_cookie(state: &AppState) -> Cookie<'static> {
-    Cookie::build((SESSION_COOKIE, ""))
+    Cookie::build((session_cookie_name(state), ""))
         .path("/")
         .http_only(true)
         .secure(state.cfg.cookie_secure)
@@ -78,12 +157,13 @@ pub async fn create_session(state: &AppState) -> AppResult<String> {
     let token_hash = crypto::sha256_hex(token.as_bytes());
     let ts = now();
     let expires = ts + state.cfg.session_ttl_hours * 3600;
+    let fp = password_fingerprint(state);
     state
         .db
         .call(move |c| {
             c.execute(
-                "INSERT INTO sessions (token_hash, created_at, expires_at) VALUES (?1, ?2, ?3)",
-                params![token_hash, ts, expires],
+                "INSERT INTO sessions (token_hash, created_at, expires_at, pw_fp) VALUES (?1, ?2, ?3, ?4)",
+                params![token_hash, ts, expires, fp],
             )?;
             Ok(())
         })
@@ -100,6 +180,18 @@ pub async fn destroy_session(state: &AppState, token: &str) -> AppResult<()> {
                 "DELETE FROM sessions WHERE token_hash = ?1",
                 params![token_hash],
             )?;
+            Ok(())
+        })
+        .await?;
+    Ok(())
+}
+
+/// Signs out every session (all devices).
+pub async fn destroy_all_sessions(state: &AppState) -> AppResult<()> {
+    state
+        .db
+        .call(|c| {
+            c.execute("DELETE FROM sessions", [])?;
             Ok(())
         })
         .await?;
@@ -128,7 +220,7 @@ impl FromRequestParts<AppState> for Admin {
             ));
         }
         let jar = CookieJar::from_headers(&parts.headers);
-        let Some(token) = jar.get(SESSION_COOKIE).map(|c| c.value().to_string()) else {
+        let Some(token) = session_token(&jar) else {
             return Err(AppError::Unauthorized);
         };
         if token.len() != 64 {
@@ -136,12 +228,13 @@ impl FromRequestParts<AppState> for Admin {
         }
         let token_hash = crypto::sha256_hex(token.as_bytes());
         let ts = now();
+        let fp = password_fingerprint(state);
         let valid = state
             .db
             .call(move |c| {
                 Ok(c.query_row(
-                    "SELECT 1 FROM sessions WHERE token_hash = ?1 AND expires_at > ?2",
-                    params![token_hash, ts],
+                    "SELECT 1 FROM sessions WHERE token_hash = ?1 AND expires_at > ?2 AND pw_fp = ?3",
+                    params![token_hash, ts, fp],
                     |_| Ok(()),
                 )
                 .optional()?

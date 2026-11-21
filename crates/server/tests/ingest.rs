@@ -230,12 +230,12 @@ async fn per_ip_rate_limit_with_retry_after() {
 }
 
 #[tokio::test]
-async fn per_project_hourly_cap_spans_ips() {
-    let app = App::with(|c| c.limits.per_project_hour = 3).await;
-    let mut app = app;
+async fn per_project_flood_quarantines_then_caps() {
+    let mut app = App::with(|c| c.limits.per_project_hour = 3).await;
     app.login().await;
     let p = app.create_project("Busy").await;
     let key = key_of(&p);
+    // Up to the flood guard: stored normally.
     for i in 0..3 {
         app.submit_ok(
             &key,
@@ -246,6 +246,23 @@ async fn per_project_hourly_cap_spans_ips() {
         )
         .await;
     }
+    // Beyond it (up to 3x): still accepted, but quarantined, so a flood from
+    // many IPs cannot turn real players away.
+    for i in 3..9 {
+        app.submit_ok(
+            &key,
+            &format!("8.8.8.{i}"),
+            "bug",
+            "",
+            &format!("flood body number {i}"),
+        )
+        .await;
+    }
+    assert_eq!(app.feedback("status=new").await["total"], 3);
+    let spam = app.feedback("status=spam").await;
+    assert_eq!(spam["total"], 6, "{spam}");
+    assert_eq!(spam["items"][0]["spam_reason"], "flood");
+    // At 3x the guard, the project is hard capped.
     let r = app
         .submit(
             &key,
@@ -254,6 +271,54 @@ async fn per_project_hourly_cap_spans_ips() {
         )
         .await;
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn total_daily_intake_is_capped_across_projects() {
+    let mut app = App::with(|c| c.limits.global_day = 2).await;
+    app.login().await;
+    let a = key_of(&app.create_project("A").await);
+    let b = key_of(&app.create_project("B").await);
+    app.submit_ok(&a, "8.1.1.1", "bug", "", "first body here")
+        .await;
+    app.submit_ok(&b, "8.1.1.2", "bug", "", "second body here")
+        .await;
+    let r = app
+        .submit(
+            &a,
+            "8.1.1.3",
+            json!({ "kind": "bug", "body": "third body" }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn zero_width_characters_do_not_hide_spam_phrases() {
+    let (app, key, _) = setup().await;
+    app.submit_ok(
+        &key,
+        "2.3.4.5",
+        "log",
+        "Win",
+        "free bit\u{200b}coin at the ca\u{200b}sino, cheap via\u{200d}gra and payday lo\u{feff}an",
+    )
+    .await;
+    let spam = app.feedback("status=spam").await;
+    assert_eq!(spam["total"], 1, "{spam}");
+}
+
+#[tokio::test]
+async fn paraphrased_spam_sent_as_logs_is_still_a_near_duplicate() {
+    let (app, key, _) = setup().await;
+    for body in [
+        "Check out my great site for cheap game keys and more deals today",
+        "Check out my great site for cheap game keys and more deals today!",
+    ] {
+        app.submit_ok(&key, "2.4.4.4", "log", "Deals", body).await;
+    }
+    app.embed_all().await;
+    assert_eq!(app.feedback("status=spam").await["total"], 1);
 }
 
 #[tokio::test]
@@ -590,4 +655,62 @@ async fn blocked_requests_do_not_grow_the_database_per_request() {
         .await
         .unwrap();
     assert_eq!(rows, 1);
+}
+
+#[tokio::test]
+async fn prune_purges_old_spam_but_keeps_flood_quarantines_and_drops_ip_hashes() {
+    let (app, key, _) = setup().await;
+    for (ip, body) in [
+        ("2.6.6.1", "spam that should be purged after retention"),
+        ("2.6.6.2", "real report quarantined during a flood"),
+        ("2.6.6.3", "kept item with an old pseudonym"),
+    ] {
+        app.submit_ok(&key, ip, "bug", "", body).await;
+    }
+    let old = earful::db::now() - 40 * 86400;
+    app.state
+        .db
+        .call(move |c| {
+            c.execute(
+                "UPDATE feedback SET status = 'spam', spam_reason = 'spam_score (links)', updated_at = ?1, created_at = ?1 WHERE body LIKE 'spam that%'",
+                rusqlite::params![old],
+            )?;
+            c.execute(
+                "UPDATE feedback SET status = 'spam', spam_reason = 'flood', updated_at = ?1, created_at = ?1 WHERE body LIKE 'real report%'",
+                rusqlite::params![old],
+            )?;
+            c.execute(
+                "UPDATE feedback SET created_at = ?1 WHERE body LIKE 'kept item%'",
+                rusqlite::params![old],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    earful::worker::prune(&app.state).await.unwrap();
+    let (bodies, hashes): (Vec<String>, i64) = app
+        .state
+        .db
+        .call(|c| {
+            let mut s = c.prepare("SELECT body FROM feedback ORDER BY id")?;
+            let bodies = s
+                .query_map([], |r| r.get(0))?
+                .collect::<rusqlite::Result<Vec<String>>>()?;
+            let hashes = c.query_row(
+                "SELECT COUNT(*) FROM feedback WHERE ip_hash != ''",
+                [],
+                |r| r.get(0),
+            )?;
+            Ok((bodies, hashes))
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        bodies,
+        vec![
+            "real report quarantined during a flood".to_string(),
+            "kept item with an old pseudonym".to_string()
+        ]
+    );
+    assert_eq!(hashes, 0, "pseudonyms older than two days are cleared");
 }

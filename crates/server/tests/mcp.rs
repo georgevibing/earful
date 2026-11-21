@@ -256,6 +256,20 @@ async fn json_rpc_errors_and_batches() {
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
     assert_eq!(r.json()["error"]["code"], -32600);
 
+    // Oversized batches are refused outright.
+    let many: Vec<Value> = (0..21)
+        .map(|i| json!({ "jsonrpc": "2.0", "id": i, "method": "ping" }))
+        .collect();
+    let r = rpc_raw(&app, &tok, Value::Array(many)).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert_eq!(r.json()["error"]["code"], -32600);
+    let twenty: Vec<Value> = (0..20)
+        .map(|i| json!({ "jsonrpc": "2.0", "id": i, "method": "ping" }))
+        .collect();
+    let r = rpc_raw(&app, &tok, Value::Array(twenty)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json().as_array().unwrap().len(), 20);
+
     let v = rpc(&app, &tok, "nope/nothing", json!({})).await;
     assert_eq!(v["error"]["code"], -32601);
 

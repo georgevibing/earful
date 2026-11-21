@@ -25,7 +25,7 @@ mime_guess = "2.0.5"
 # Model2Vec static embeddings. No hf-hub (we download with reqwest) and no
 # default tokenizer features: only the pure Rust fancy-regex backend, which
 # avoids the oniguruma C and esaxx C++ builds and the progress bar crate.
-model2vec-rs = { version = "0.3.0", default-features = false }
+model2vec-rs = { version = "0.4.0", default-features = false }
 tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 rand = "0.10.3"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }

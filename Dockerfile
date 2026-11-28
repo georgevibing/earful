@@ -21,7 +21,7 @@ COPY packages/widget packages/widget
 RUN pnpm build:web
 
 # ---------- 2. Rust binary ----------
-FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS server
+FROM rust:1-slim-bookworm@sha256:bb875b0f8ce726053e259034848c471840e96bfe591fd52556178ae9a05e6126 AS server
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake perl pkg-config \
     && rm -rf /var/lib/apt/lists/*

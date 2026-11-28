@@ -50,7 +50,7 @@ RUN mkdir -p /out/data && chown 65532:65532 /out/data
 # ---------- 3. Embedding model (Model2Vec potion-base-8M, MIT, ~31 MB) ----------
 # Pinned revision and sha256 so builds are reproducible and tamper evident.
 # Independent of the source tree, so this layer stays cached across code edits.
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS model
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS model
 ARG MODEL_REPO=minishlab/potion-base-8M
 ARG MODEL_REVISION=bf8b056651a2c21b8d2565580b8569da283cab23
 RUN apt-get update \
